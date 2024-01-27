@@ -2,7 +2,7 @@
 #'
 #' A \code{\link{cv}()} method for an object of class  \code{"modlist"},
 #' created by the \code{models()} function. This \code{cv()} method simplifies
-#' the process of cross-validating several models on the same set of folds.
+#' the process of cross-validating several models on the same set of CV folds.
 #' \code{models()} performs some
 #' "sanity" checks, warning if the models are of different classes, and
 #' reporting an error if they are fit to apparently different data sets or
@@ -10,7 +10,7 @@
 #' @param model a list of regression model objects,
 #' created by \code{models()}.
 #' @param data (required) the data set to which the models were fit.
-#' @param criterion the CV criterion (cost) function, defaults to
+#' @param criterion the CV criterion ("cost" or lack-of-fit) function, defaults to
 #' \code{\link{mse}}.
 #' @param k the number of CV folds; may be omitted, in which case the value
 #' will depend on the default for the \code{cv()} method invoked for the
@@ -19,12 +19,14 @@
 #' @param seed (optional) seed for R's pseudo-random-number generator,
 #' to be used to create the same set of CV folds for all of the models;
 #' if omitted, a seed will be randomly generated and saved.
-#' @param quietly If \code{TRUE} (the default), simple messages (for example about the
+#' @param quietly if \code{TRUE} (the default), simple messages (for example about the
 #' value to which the random-number generator seed is set), but not warnings or
 #' errors, are suppressed.
-#' @param ... for \code{cv()}, additional arguments to be passed to the \code{cv()} method
-#' applied to each model. For \code{models()}, two or more competing models fit to the
-#' the same data; the several models may be named. For the \code{print()}
+#' @param grid if \code{TRUE} (the default), include grid lines on the graph.
+#' @param ... for \code{models()}, two or more competing models fit to the
+#' the same data; the several models may be named.
+#' For \code{cv()}, additional arguments to be passed to the \code{cv()} method
+#' applied to each model. For the \code{print()}
 #' method, arguments to be passed to the \code{print()} method for
 #' the individual model cross-validations. For the \code{plot()},
 #' method, arguments to be passed to the base \code{\link[base]{plot}()}
@@ -36,6 +38,12 @@
 #' @param xlab label for the x-axis (defaults to blank).
 #' @param ylab label for the y-axis (if missing, a label is constructed).
 #' @param main main title for the graph (if missing, a label is constructed).
+#' @param spread if \code{"range"}, the default, show the range of CV criteria
+#' for each model along with their average; if \code{"sd"}, show the average
+#' plus or minus 1 standard deviation.
+#' @param confint if \code{TRUE} (the default) and if confidence intervals are
+#' in any of the \code{"cv"} objects, then plot the confidence intervals around the
+#' CV criteria.
 #' @param axis.args a list of arguments for the \code{\link{axis}()}
 #' function, used to draw the horizontal axis. In addition to
 #' the axis arguments given explicitly, \code{side=1} (the horizontal
@@ -46,6 +54,7 @@
 #' @param lwd line width for the line (defaults to 2).
 #' @return \code{models()} returns a \code{"modList"} object, the
 #' \code{cv()} method for which returns a \code{"cvModList"} object.
+#' @seealso \code{\link{cv}}, \code{\link{cvMixed}}.
 #' @examples
 #' data("Duncan", package="carData")
 #' m1 <- lm(prestige ~ income + education, data=Duncan)
@@ -54,6 +63,10 @@
 #' (cv.models <- cv(models(m1=m1, m2=m2, m3=m3),
 #'                  data=Duncan, seed=7949, reps=5))
 #' plot(cv.models)
+#' (cv.models.ci <- cv(models(m1=m1, m2=m2, m3=m3),
+#'                     data=Duncan, seed=5962, confint=TRUE, level=0.50))
+#'                  # nb: n too small for accurate CIs
+#' plot(cv.models.ci)
 #' @describeIn models create a list of models
 #' @export
 models <- function(...){
@@ -64,9 +77,9 @@ models <- function(...){
   if (!all(n[1L] == n[-1L])) {
     stop("models are fit to data sets of differing numbers of cases")
   }
-  response <- getResponse(models[[1L]])
+  response <- GetResponse(models[[1L]])
   for (i in 2L:length(models)){
-    if (!isTRUE(all.equal(response, getResponse(models[[i]]),
+    if (!isTRUE(all.equal(response, GetResponse(models[[i]]),
                           check.attributes=FALSE))){
       stop("models are not all fit to the same response variable")
     }
@@ -120,7 +133,7 @@ print.cvModList <- function(x, ...){
   nms <- names(x)
   if (inherits(x[[1L]], "cvList")){
     reps <- length(x[[1L]])
-    nms <- paste0(nms, " (averaged across ", reps, " replications)")
+    nms <- paste0(nms, " averaged across ", reps, " replications (with SDs)")
   }
   for (i in seq_along(x)){
     cat(paste0("\nModel ", nms[i], ":\n"))
@@ -143,19 +156,27 @@ print.cvModList <- function(x, ...){
 #' @importFrom stats na.omit
 #' @exportS3Method
 plot.cvModList <- function(x, y,
+                           spread=c("range", "sd"),
+                           confint=TRUE,
                            xlab="",
                            ylab,
                            main,
                            axis.args = list(labels=names(x), las=3L),
-                           col=palette()[2L], lwd=2, ...){
+                           col=palette()[2L], lwd=2,
+                           grid=TRUE, ...){
+  spread <- match.arg(spread)
   if (missing(ylab)){
     ylab <- if (inherits(x[[1L]], "cvList")){
-      "Cross-Validation Criterion (Average and Range)"
+      if (spread == "range"){
+        "Cross-Validation Criterion (Average and Range)"
+      } else {
+        expression("Cross-Validation Criterion (Average"%+-%"SD)")
+      }
     } else {
       "Cross-Validation Criterion"
     }
   }
-  if (missing(main)){
+  if (miss.main <- missing(main)){
     main <- "Model Comparison"
     if (inherits(x[[1L]], "cvList")){
       main <- paste(main, "\nAveraged Across",
@@ -182,25 +203,68 @@ plot.cvModList <- function(x, y,
     on.exit(par(save.mai))
   }
   if (inherits(x[[1L]], "cvList")){
-    # sd <- paste("SD", y)
-    ynm <- paste(y, "range")
+    ynm <- if (spread == "range") {
+      paste(y, "range")
+    } else {
+      paste("SD", y)
+    }
     sumry <- lapply(x, summarizeReps)
-    # min.y <- sapply(sumry, function(x) x[[y]] - x[[sd]])
-    # max.y <- sapply(sumry, function(x) x[[y]] + x[[sd]])
-    min.y <- sapply(sumry, function(x) x[[ynm]][1])
-    max.y <- sapply(sumry, function(x) x[[ynm]][2])
+    crit <- sapply(sumry, function (x) x[[y]])
+    if (spread == "sd"){
+      sds <- sapply(sumry, function(x) x[[ynm]])
+      min.y <- crit - sds
+      max.y <- crit + sds
+    } else {
+      min.y <- sapply(sumry, function(x) x[[ynm]][1])
+      max.y <- sapply(sumry, function(x) x[[ynm]][2])
+    }
     plot(c(1L, length(x)), c(min(min.y), max(max.y)),
          xlab=xlab, ylab=ylab,
          main=main, axes=FALSE, type="n")
-    crit <- sapply(sumry, function (x) x[[y]])
+    if (grid) grid()
     xs <- seq(along=x)
     points(xs, crit, type="b", col=col, lwd=lwd)
     arrows(xs, min.y, xs, max.y, length=0.125, angle=90,
            col=col, code=3, lty=1, lwd=1)
   } else {
     crit <- sapply(x, function (x) x[[y]])
+    if (y == "adj CV crit"){
+      cis <- lapply(x, function(x) x[["confint"]])
+      if (confint && !all(sapply(cis, function(ci) is.null(ci)))){
+        plot.cis <- TRUE
+        if (miss.main){
+          main <- "Model Comparison\nwith Confidence Intervals"
+        }
+        lowers <- sapply(cis, function(ci) {
+          low <- ci["lower"]
+          if (is.null(low)) NA else low
+        })
+        uppers <- sapply(cis, function(ci) {
+          up <- ci["upper"]
+          if (is.null(up)) NA else up
+        })
+        min.y <- min(lowers, na.rm=TRUE)
+        max.y <- max(uppers, na.rm=TRUE)
+      }
+      else {
+        plot.cis <- FALSE
+        min.y <- min(crit)
+        max.y <- max(crit)
+      }
+    } else {
+      plot.cis <- FALSE
+      min.y <- min(crit)
+      max.y <- max(crit)
+    }
     plot(seq(along=crit), crit, xlab=xlab, ylab=ylab, main=main,
-         axes=FALSE, type="b", col=col, lwd=lwd, ...)
+         axes=FALSE, type="b", col=col, lwd=lwd,
+         ylim=c(min.y, max.y), ...)
+    if (grid) grid()
+    if (plot.cis){
+      xs <- seq_along(cis)
+      arrows(xs, lowers, xs, uppers, length=0.125, angle=90,
+             col=col, code=3, lty=1, lwd=1)
+    }
   }
   abline(h=min(crit), lty=2L, col=col)
   box()

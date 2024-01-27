@@ -44,6 +44,11 @@ AUCcomp(with(Mroz, as.numeric(lfp == "yes")), fitted(m.mroz))
 library("cv")
 cv(m.mroz, criterion=AUCcomp, seed=3639)
 
+## -----------------------------------------------------------------------------
+mse
+
+cv:::getLossFn(mse(rnorm(100), rnorm(100)))
+
 ## ----BEPS-data----------------------------------------------------------------
 data("BEPS", package="carData")
 head(BEPS)
@@ -69,7 +74,9 @@ yhat <- predict(m.beps, type="class")
 head(yhat)
 
 BayesRuleMulti <- function(y, yhat){
-  mean(y != yhat)
+  result <- mean(y != yhat)
+  attr(result, "casewise loss") <- "y != yhat"
+  result
 }
 
 BayesRuleMulti(BEPS$vote, yhat)
@@ -80,12 +87,12 @@ xtabs(~ vote, data=BEPS)/nrow(BEPS)
 ## ----BEPS-test-default, error=TRUE--------------------------------------------
 cv(m.beps, seed=3465, criterion=BayesRuleMulti)
 
-## ----getResponse.multinom-----------------------------------------------------
-getResponse.multinom <- function(model, ...) {
+## ----GetResponse.multinom-----------------------------------------------------
+GetResponse.multinom <- function(model, ...) {
   insight::get_response(model)
 }
 
-head(getResponse(m.beps))
+head(GetResponse(m.beps))
 
 ## ----BEPS-test-default-2, error=TRUE------------------------------------------
 cv(m.beps, seed=3465, criterion=BayesRuleMulti)
@@ -103,13 +110,13 @@ cv(m.beps, seed=3465)
 ## ----cv.lme-------------------------------------------------------------------
 cv:::cv.lme
 
-## ----getResponse.glmmPQL------------------------------------------------------
-getResponse.glmmPQL <- function(model, ...){
+## ----GetResponse.glmmPQL------------------------------------------------------
+GetResponse.glmmPQL <- function(model, ...){
   f <- formula(model)
   f[[3]] <- 1 # regression constant only on RHS
   model <- suppressWarnings(glm(f, data=model$data, family=model$family,
                                 control=list(maxit=1)))
-  cv::getResponse(model)
+  cv::GetResponse(model)
 }
 
 ## ----cv.glmmPQL---------------------------------------------------------------
@@ -117,6 +124,7 @@ cv.glmmPQL <- function(model, data = model$data, criterion = mse,
                      k, reps = 1, seed, ncores = 1, clusterVariables, ...){
   cvMixed(
     model,
+    package="MASS",
     data=data,
     criterion=criterion,
     k=k,
@@ -187,7 +195,7 @@ selectSubsets <- function(data=insight::get_data(model),
   if (inherits(model, "lm", which=TRUE) != 1)
     stop("selectSubsets is appropriate only for 'lm' models")
   
-  y <- getResponse(model)
+  y <- GetResponse(model)
   formula <- formula(model)
   X <- model.matrix(model)
 
@@ -212,10 +220,11 @@ selectSubsets <- function(data=insight::get_data(model),
               # predict() doesn't work here:
   fit.all.i <- as.vector(X[, x.names.i] %*% coef(m.best.i))
   fit.i <- fit.all.i[indices]
-  # return the CV criteria and the regression coefficients
-  list(criterion=c(criterion(y[indices], fit.i), # for i-th fold
-                   criterion(y, fit.all.i)), # for all data
-       coefficients = if (save.coef){
+  # return the fitted values for i-th fold, CV criterion for all cases, 
+  #   and the regression coefficients
+  list(fit.i=fit.i, # fitted values for i-th fold
+       crit.all.i=criterion(y, fit.all.i), # CV crit for all cases
+       coefficients = if (save.coef){ # regression coefficients
          coefs <- coef(m.best.i)
          
          # fix coefficient names
@@ -241,6 +250,63 @@ selectSubsets(model=m.swiss, indices=seq(5, 45, by=10))
 
 ## ----best-models-by-folds-----------------------------------------------------
 compareFolds(cv.swiss)
+
+## -----------------------------------------------------------------------------
+AUC <- function(y, yhat = seq_along(y)) {
+  s <- sum(y)
+  if (s == 0) return(0)
+  if (s == length(y)) return(1)
+  Metrics::auc(y, yhat)
+}
+
+## -----------------------------------------------------------------------------
+Ymat <- function(n_v, exclude_identical = FALSE) {
+  stopifnot(n_v > 0 && round(n_v) == n_v)    # n_v must be a positive integer
+  ret <- sapply(0:(2^n_v - 1),
+                function(x) as.integer(intToBits(x)) )[1:n_v, ]
+  ret <- if (is.matrix(ret)) t(ret) else matrix(ret)
+  colnames(ret) <- paste0("y", 1:ncol(ret))
+  if (exclude_identical) ret[-c(1, nrow(ret)), ] else ret
+}
+
+## -----------------------------------------------------------------------------
+Ymat(3)
+
+## -----------------------------------------------------------------------------
+Ymat(3, exclude_identical = TRUE)
+
+## -----------------------------------------------------------------------------
+cbind(Ymat(3), AUC = apply(Ymat(3), 1, AUC))
+
+## -----------------------------------------------------------------------------
+resids <- function(n_v, exclude_identical = FALSE, 
+                   tol = sqrt(.Machine$double.eps)) {
+  Y <- Ymat(n_v, exclude_identical = exclude_identical)
+  AUC <- apply(Y, 1, AUC)
+  X <- cbind(1-Y, Y)
+  opts <- options(warn = -1)
+  on.exit(options(opts))
+  fit <- lsfit(X, AUC, intercept = FALSE)
+  ret <- max(abs(residuals(fit)))
+  if(ret < tol){
+    ret <- 0
+    solution <- coef(fit)
+    names(solution) <- paste0("c(", c(1:n_v, 1:n_v), ",", 
+                              rep(0:1, each = n_v), ")")
+    attr(ret, "solution") <- zapsmall(solution)
+  }
+  ret
+}
+
+## -----------------------------------------------------------------------------
+resids(3, exclude_identical = TRUE)
+
+## -----------------------------------------------------------------------------
+resids(3, exclude_identical = FALSE)
+
+## -----------------------------------------------------------------------------
+resids(4, exclude_identical = TRUE)
+resids(4, exclude_identical = FALSE)
 
 ## ----coda, include = FALSE----------------------------------------------------
 options(.opts)

@@ -6,13 +6,15 @@
 #' fit by the \code{\link[nlme]{lme}()} function in the \pkg{nlme}
 #' package; and for models of class \code{"glmmTMB"} fit by the
 #' \code{\link[glmmTMB]{glmmTMB}()} function in the \pkg{glmmTMB} package.
-#' The implementations here should be regarded
-#' as experimental. The \code{cvMixed()} function is meant to be called by
+#' The \code{cvMixed()} function is meant to be called by
 #' \code{cv()} methods for mixed-effect models and not directly by the user.
+#' It can be used to extend \code{cv()} to other classes of mixed-effects models.
 #'
-#' @param model a regression model object of class \code{"merMod"}.
+#' @param model a mixed-effects model object for which a \code{cv()} method is available.
+#' @param package the name of the package in which mixed-modeling function (or functions) employed resides;
+#' used to get the namespace of the package.
 #' @param data data frame to which the model was fit (not usually necessary)
-#' @param criterion cross-validation criterion function of form \code{f(y, yhat)}
+#' @param criterion cross-validation ("cost" or lack-of-fit) criterion function of form \code{f(y, yhat)}
 #'        where \code{y} is the observed values of the response and
 #'        \code{yhat} the predicted values; the default is \code{\link{mse}}
 #'        (the mean-squared error)
@@ -20,14 +22,18 @@
 #' may be a number or \code{"loo"} or \code{"n"} for n-fold (leave-one-out)
 #' cross-validation; the default is \code{10} if cross-validating individual
 #' cases and \code{"loo"} if cross-validating clusters.
-#' @param reps number of times to replicate k-fold CV (default is \code{1})
+#' @param reps number of times to replicate k-fold CV (default is \code{1}),
+#' @param confint if \code{TRUE} (the default if the number of cases is 400
+#' or greater), compute a confidence interval for the bias-corrected CV
+#' criterion, if the criterion is the average of casewise components.
+#' @param level confidence level (default \code{0.95}).
 #' @param seed for R's random number generator; optional, if not
 #' supplied a random seed will be selected and saved; not needed
 #' for n-fold cross-validation
 #' @param ncores number of cores to use for parallel computations
 #'        (default is \code{1}, i.e., computations aren't done in parallel)
 #' @param clusterVariables a character vector of names of the variables
-#' defining clusters for a mixed model with nested random effects;
+#' defining clusters for a mixed model with nested or crossed random effects;
 #' if missing, cross-validation is performed for individual cases rather than
 #' for clusters
 #' @param predict.clusters.args a list of arguments to be used to predict
@@ -47,8 +53,8 @@
 #' @details
 #' For mixed-effects models, cross-validation can be done by "clusters" or by
 #' individual observations. If the former, predictions are based only on fixed
-#' effects; if the latter, predictions include the random effects. Only mixed
-#' models with fully nested random effects are supported.
+#' effects; if the latter, predictions include the random effects (i.e., are the
+#' best linear unbiased predictors or "BLUPS").
 #'
 #' @seealso \code{\link{cv}}, \code{\link[lme4]{lmer}}, \code{\link[lme4]{glmer}},
 #' \code{\link[nlme]{lme}}, \code{\link[glmmTMB]{glmmTMB}}
@@ -68,13 +74,22 @@
 #' cv(fm2) # LOO CV of cases
 #' cv(fm2, clusterVariables="Subject", k=5, seed=321) # 5-fold CV of clusters
 #'
+#' library("glmmTMB")
+#' # from ?glmmTMB
+#' (m1 <- glmmTMB(count ~ mined + (1|site),
+#'                zi=~mined,
+#'                family=poisson, data=Salamanders))
+#' cv(m1, seed=97816, k=5, clusterVariables="site") # 5-fold CV of clusters
+#' cv(m1, seed=34506, k=5) # 5-fold CV of cases
 #' @describeIn cvMixed not to be called directly
 #' @export
 cvMixed <- function(model,
+                    package,
                     data=insight::get_data(model),
                     criterion=mse,
                     k,
                     reps=1,
+                    confint, level=0.95,
                     seed,
                     ncores=1,
                     clusterVariables,
@@ -82,24 +97,33 @@ cvMixed <- function(model,
                     predict.cases.args=list(object=model, newdata=data),
                     ...){
 
-  f.clusters <- function(i){
+  pkg.env <- getNamespace(package)
+
+  f.clusters <- function(i, predict.clusters.args, predict.cases.args, ...){
     indices.i <- indices[starts[i]:ends[i]]
     index <- selectClusters(clusters[- indices.i, , drop=FALSE], data=data)
-    predict.clusters.args$object <- update(model, data=data[index, ], ...)
+    update.args <- list(...)
+    update.args$object <- model
+    update.args$data <- data[index, ]
+    predict.clusters.args$object <- do.call(update, update.args, envir=pkg.env)
     fit.all.i <- do.call(predict, predict.clusters.args)
-    fit.i <- fit.all.i[!index]
-    c(criterion(y[!index], fit.i), criterion(y, fit.all.i))
+    fit.i <- fit.all.i[index <- !index]
+    list(fit.i=fit.i, crit.all.i=criterion(y, fit.all.i),
+         indices.i=index)
   }
 
-  f.cases <- function(i){
+  f.cases <- function(i, predict.clusters.args, predict.cases.args, ...){
     indices.i <- indices[starts[i]:ends[i]]
-    predict.cases.args$object <- update(model, data=data[ - indices.i, ], ...)
+    update.args <- list(...)
+    update.args$object <- model
+    update.args$data <- data[ - indices.i, ]
+    predict.cases.args$object <- do.call(update, update.args, envir=pkg.env)
     fit.all.i <- do.call(predict, predict.cases.args)
     fit.i <- fit.all.i[indices.i]
-    c(criterion(y[indices.i], fit.i), criterion(y, fit.all.i))
+    list(fit.i=fit.i, crit.all.i=criterion(y, fit.all.i),
+         indices.i=indices.i)
   }
-
-  y <- getResponse(model)
+  y <- GetResponse(model)
 
   if (missing(clusterVariables)) clusterVariables <- NULL
   if (is.null(clusterVariables)){
@@ -139,22 +163,33 @@ cvMixed <- function(model,
   ends <- cumsum(folds) # end of each fold
   starts <- c(1, ends + 1)[-(k + 1)] # start of each fold
   indices <- if (n > k) sample(n, n)  else 1:n # permute clusters/cases
+  yhat <- if (is.factor(y)){
+    factor(rep(NA, n), levels=levels(y))
+  } else if (is.character(y)) {
+    character(n)
+  } else {
+    numeric(n)
+  }
 
   if (ncores > 1L){
     cl <- makeCluster(ncores)
     registerDoParallel(cl)
-    result <- foreach(i = 1L:k, .combine=rbind) %dopar% {
-      f(i)
+    result <- foreach(i = 1L:k) %dopar% {
+      f(i, predict.clusters.args, predict.cases.args, ...)
     }
     stopCluster(cl)
-  } else {
-    result <- matrix(0, k, 2L)
     for (i in 1L:k){
-      result[i, ] <- f(i)
+      yhat[result[[i]]$indices.i] <- result[[i]]$fit.i
+    }
+  } else {
+    result <- vector(k, mode="list")
+    for (i in 1L:k){
+      result[[i]] <- f(i, predict.clusters.args, predict.cases.args, ...)
+      yhat[result[[i]]$indices.i] <- result[[i]]$fit.i
     }
   }
-  cv <- weighted.mean(result[, 1L], folds)
-  args <-
+  cv <- criterion(y, yhat)
+ # args <-
     cv.full <- criterion(y,
                          do.call(predict,
                                  if (is.null(clusterVariables)) {
@@ -163,8 +198,26 @@ cvMixed <- function(model,
                                    }
                          )
     )
-  adj.cv <- cv + cv.full - weighted.mean(result[, 2L], folds)
-  result <- list("CV crit" = cv, "adj CV crit" = adj.cv, "full crit" = cv.full,
+
+    if (missing(confint)) confint <- length(y) >= 400
+    loss <- getLossFn(cv) # casewise loss function
+    if (!is.null(loss)) {
+      adj.cv <- cv + cv.full -
+        weighted.mean(sapply(result, function(x) x$crit.all.i), folds)
+      se.cv <- sd(loss(y, yhat))/sqrt(length(y))
+      halfwidth <- qnorm(1 - (1 - level)/2)*se.cv
+      ci <- if (confint) c(lower = adj.cv - halfwidth, upper = adj.cv + halfwidth,
+                           level=round(level*100)) else NULL
+    } else {
+      adj.cv <- NULL
+      ci <- NULL
+    }
+
+  # adj.cv <- cv + cv.full -
+  #   weighted.mean(sapply(result, function(x) x$crit.all.i), folds)
+
+  result <- list("CV crit" = cv, "adj CV crit" = adj.cv,
+                 "full crit" = cv.full, "confint"=ci,
                  "k" = if (k == n) "n" else k, "seed" = seed,
                  clusters = clusterVariables,
                  "n clusters" = if (!is.null(clusterVariables)) n else NULL
@@ -191,7 +244,7 @@ cvMixed <- function(model,
 }
 
 #' @returns \code{cvMixed()}, and functions based on it, such as the methods
-#' \code{cv.merMod()}, \code{cv.lme()}, \code{cv.glmmTMB()}, return objects of class \code{"cv"}, or,
+#' \code{cv.merMod()}, \code{cv.lme()}, and \code{cv.glmmTMB()}, return objects of class \code{"cv"}, or,
 #' if \code{reps > 1}, of class \code{"cvList"} (see \code{\link{cv}()}).
 
 #' @describeIn cvMixed \code{cv()} method
@@ -200,6 +253,7 @@ cv.merMod <- function(model, data = insight::get_data(model), criterion = mse,
                       k, reps = 1, seed, ncores = 1, clusterVariables, ...){
   cvMixed(
     model,
+    package="lme4",
     data=data,
     criterion=criterion,
     k=k,
@@ -225,6 +279,7 @@ cv.lme <- function(model, data = insight::get_data(model), criterion = mse,
                    k, reps = 1, seed, ncores = 1, clusterVariables, ...){
   cvMixed(
     model,
+    package="nlme",
     data=data,
     criterion=criterion,
     k=k,
@@ -247,6 +302,7 @@ cv.glmmTMB <- function(model, data = insight::get_data(model), criterion = mse,
                        k, reps = 1, seed, ncores = 1, clusterVariables, ...){
   cvMixed(
     model,
+    package="glmmTMB",
     data=data,
     criterion=criterion,
     k=k,

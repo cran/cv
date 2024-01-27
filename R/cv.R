@@ -7,7 +7,7 @@
 #'
 #' @param model a regression model object (see Details).
 #' @param data data frame to which the model was fit (not usually necessary).
-#' @param criterion cross-validation criterion ("cost") function of form \code{f(y, yhat)}
+#' @param criterion cross-validation criterion ("cost" or lack-of-fit) function of form \code{f(y, yhat)}
 #'        where \code{y} is the observed values of the response and
 #'        \code{yhat} the predicted values; the default is \code{\link{mse}}
 #'        (the mean-squared error).
@@ -15,6 +15,10 @@
 #' may be a number or \code{"loo"} or \code{"n"} for n-fold (leave-one-out)
 #' cross-validation.
 #' @param reps number of times to replicate k-fold CV (default is \code{1})
+#' @param confint if \code{TRUE} (the default if the number of cases is 400
+#' or greater), compute a confidence interval for the bias-corrected CV
+#' criterion, if the criterion is the average of casewise components.
+#' @param level confidence level (default \code{0.95}).
 #' @param seed for R's random number generator; optional, if not
 #' supplied a random seed will be selected and saved; not needed
 #' for n-fold cross-validation
@@ -28,20 +32,24 @@
 #' the default is `type="response"`, which is appropriate, e.g., for a `"glm"` model
 #' and may be recognized or ignored by \code{predict()} methods for other model classes.
 #' @param ... to match generic; passed to \code{predict()} for the default method.
-#' @returns An object of class \code{"cv"}, with the averaged CV criterion
-#' (\code{"CV crit"}), the adjusted average CV criterion (\code{"adj CV crit"}),
+#'
+#' @returns The \code{cv()} methods return an object of class \code{"cv"}, with the CV criterion
+#' (\code{"CV crit"}), the bias-adjusted CV criterion (\code{"adj CV crit"}),
 #' the criterion for the model applied to the full data (\code{"full crit"}),
+#' the confidence interval and level for the bias-adjusted CV criterion (\code{"confint"}),
 #' the number of folds (\code{"k"}), and the seed for R's random-number
 #' generator (\code{"seed"}). Some methods may return a
 #' subset of these components and may add additional information.
 #' If \code{reps} > \code{1}, then an object of class \code{"cvList"} is returned,
 #' which is literally a list of \code{"cv"} objects.
 #'
+#' @seealso \code{\link{cvMixed}}, \code{\link{cvSelect}}.
+#'
 #' @details
-#' The default method uses \code{\link{update}()} to refit the model
+#' The default \code{cv()} method uses \code{\link{update}()} to refit the model
 #' to each fold, and should work if there are appropriate \code{update()}
-#' and \code{\link{predict}()} methods and if the default method for \code{\link{getResponse}()}
-#' works or if a \code{getResponse()} method is supplied.
+#' and \code{\link{predict}()} methods, and if the default method for \code{\link{GetResponse}()}
+#' works or if a \code{GetResponse()} method is supplied.
 #'
 #' The \code{"lm"} and \code{"glm"} methods can use much faster computational
 #' algorithms, as selected by the \code{method} argument. The linear-model
@@ -65,6 +73,11 @@
 #' default for generalized linear models is \code{method="exact"},
 #' which employs \code{update()}.
 #'
+#' There is also a method for robust linear models fit by
+#' \code{\link[MASS]{rlm}()} in the \pkg{MASS} package (to avoid
+#' inheriting the \code{"lm"} method for which the default \code{"auto"}
+#' computational method would be inappropriate).
+#'
 #' For additional details, see the "Cross-validation of regression models"
 #' vignette (\code{vignette("cv", package="cv")}).
 #'
@@ -82,24 +95,36 @@
 #' data("Mroz", package="carData")
 #' m.mroz <- glm(lfp ~ ., data=Mroz, family=binomial)
 #' cv(m.mroz, criterion=BayesRule, seed=123)
+#'
+#' data("Duncan", package="carData")
+#' m.lm <- lm(prestige ~ income + education, data=Duncan)
+#' m.rlm <- MASS::rlm(prestige ~ income + education,
+#'                    data=Duncan)
+#' cv(m.lm, k="loo", method="Woodbury")
+#' cv(m.rlm, k="loo")
 #' @export
 cv <- function(model, data, criterion, k, reps=1, seed, ...){
   UseMethod("cv")
 }
 
 #' @describeIn cv \code{default} method
-#' @importFrom stats coef family fitted lm.wfit model.frame
-#' model.matrix model.response predict update weighted.mean weights
+#' @importFrom stats coef family fitted lm.wfit lsfit model.frame
+#' model.matrix model.response predict qnorm
+#' update weighted.mean weights
 #' residuals hatvalues printCoefmat sd
 #' @importFrom parallel makeCluster stopCluster
 #' @importFrom doParallel registerDoParallel
 #' @importFrom foreach foreach %dopar%
 #' @importFrom lme4 lmer
 #' @importFrom nlme lme
+#' @importFrom MASS rlm
+#' @importFrom methods functionBody
 #' @export
 cv.default <- function(model, data=insight::get_data(model),
-                       criterion=mse, k=10, reps=1, seed, ncores=1,
-                       method=NULL, type="response", ...){
+                       criterion=mse, k=10, reps=1, seed,
+                       confint = n >= 400, level=0.95,
+                       ncores=1,
+                       type="response", ...){
 
   f <- function(i){
     # helper function to compute cv criterion for each fold
@@ -107,7 +132,7 @@ cv.default <- function(model, data=insight::get_data(model),
     model.i <- update(model, data=data[ - indices.i, ])
     fit.all.i <- predict(model.i, newdata=data, type=type, ...)
     fit.i <- fit.all.i[indices.i]
-    c(criterion(y[indices.i], fit.i), criterion(y, fit.all.i))
+    list(fit.i=fit.i, crit.all.i=criterion(y, fit.all.i))
   }
 
   fPara <- function(i){
@@ -120,10 +145,10 @@ cv.default <- function(model, data=insight::get_data(model),
       newdata=data, type=type), dots)
     fit.all.i <- do.call(predict, predict.args)
     fit.i <- fit.all.i[indices.i]
-    c(criterion(y[indices.i], fit.i), criterion(y, fit.all.i))
+    list(fit.i=fit.i, crit.all.i=criterion(y, fit.all.i))
   }
 
-  y <- getResponse(model)
+  y <- GetResponse(model)
   n <- nrow(data)
   if (is.character(k)){
     if (k == "n" || k == "loo") {
@@ -139,7 +164,7 @@ cv.default <- function(model, data=insight::get_data(model),
     message("R RNG seed set to ", seed)
   } else {
     if (reps > 1) stop("reps should not be > 1 for n-fold CV")
-    if (!missing(seed) && !is.null(seed)) warning("seed ignored for n-fold CV")
+    if (!missing(seed) && !is.null(seed)) message("Note: seed ignored for n-fold CV")
     seed <- NULL
   }
   nk <-  n %/% k # number of cases in each fold
@@ -148,33 +173,55 @@ cv.default <- function(model, data=insight::get_data(model),
   ends <- cumsum(folds) # end of each fold
   starts <- c(1, ends + 1)[-(k + 1)] # start of each fold
   indices <- if (n > k) sample(n, n)  else 1:n # permute cases
+  yhat <- if (is.factor(y)){
+    factor(rep(NA, n), levels=levels(y))
+  } else if (is.character(y)) {
+    character(n)
+  } else {
+    numeric(n)
+  }
   if (ncores > 1){
     dots <- list(...)
     cl <- makeCluster(ncores)
     registerDoParallel(cl)
-    result <- foreach(i = 1L:k, .combine=rbind) %dopar% {
+    result <- foreach(i = 1L:k) %dopar% {
       fPara(i)
     }
     stopCluster(cl)
-  } else {
-    result <- matrix(0, k, 2L)
     for (i in 1L:k){
-      result[i, ] <- f(i)
+      yhat[indices[starts[i]:ends[i]]] <- result[[i]]$fit.i
+    }
+  } else {
+    result <- vector(k, mode="list")
+    for (i in 1L:k){
+      result[[i]] <- f(i)
+      yhat[indices[starts[i]:ends[i]]] <- result[[i]]$fit.i
     }
   }
-  cv <- weighted.mean(result[, 1L], folds)
+  cv <- criterion(y, yhat)
   cv.full <- criterion(y, predict(model, type=type, ...))
-  adj.cv <- cv + cv.full - weighted.mean(result[, 2L], folds)
-  result <- list("CV crit" = cv, "adj CV crit" = adj.cv, "full crit" = cv.full,
+  loss <- getLossFn(cv) # casewise loss function
+  if (!is.null(loss)) {
+    adj.cv <- cv + cv.full -
+      weighted.mean(sapply(result, function(x) x$crit.all.i), folds)
+    se.cv <- sd(loss(y, yhat))/sqrt(n)
+    halfwidth <- qnorm(1 - (1 - level)/2)*se.cv
+    ci <- if (confint) c(lower = adj.cv - halfwidth, upper = adj.cv + halfwidth,
+                         level=round(level*100)) else NULL
+  } else {
+    adj.cv <- NULL
+    ci <- NULL
+  }
+  result <- list("CV crit" = cv, "adj CV crit" = adj.cv,
+                 "full crit" = cv.full, "confint"=ci,
                  "k" = if (k == n) "n" else k, "seed" = seed,
-                 "method"=method,
                  "criterion" = deparse(substitute(criterion)))
   class(result) <- "cv"
   if (reps == 1) {
     return(result)
   } else {
     res <- cv(model=model, data=data, criterion=criterion,
-              k=k, ncores=ncores, method=method, reps=reps - 1, ...)
+              k=k, ncores=ncores, reps=reps - 1, ...)
     if (reps  > 2){
       res[[length(res) + 1]] <- result
     } else {
@@ -189,7 +236,7 @@ cv.default <- function(model, data=insight::get_data(model),
 }
 
 #' @describeIn cv \code{print()} method
-#' @param x a \code{cv} object to be printed
+#' @param x a \code{"cv"} or \code{"cvList"} object to be printed
 #' @param digits significant digits for printing,
 #' default taken from the \code{"digits"} option
 #' @export
@@ -201,7 +248,7 @@ print.cv <- function(x, digits=getOption("digits"), ...){
   cat(x[["k"]], "-Fold Cross Validation", sep="")
   if (!is.null(x[["clusters"]])){
     cat(" based on", x[["n clusters"]],
-        paste0("{", paste(x[["clusters"]], collapse=" ,"), "}"),
+        paste0("{", paste(x[["clusters"]], collapse=", "), "}"),
         "clusters")
   }
   if (!is.null(x[["method"]])) cat("\nmethod:", x[["method"]])
@@ -221,6 +268,12 @@ print.cv <- function(x, digits=getOption("digits"), ...){
           rnd(x[["adj CV crit"]]), " (", rnd(x[["SD adj CV crit"]]), ")", sep="")
     }
   }
+  if (!is.null(x$confint)){
+    cat(paste0("\n", x$confint["level"],
+        "% CI for bias-adjusted CV criterion = (",
+        rnd(x$confint["lower"]), ", ", rnd(x$confint["upper"]), ")")
+    )
+  }
   if (!is.null(x[["full crit"]]))
     cat("\nfull-sample criterion =", rnd(x[["full crit"]]), "\n")
   invisible(x)
@@ -229,29 +282,29 @@ print.cv <- function(x, digits=getOption("digits"), ...){
 #' @describeIn cv \code{print()} method
 #' @export
 print.cvList <- function(x, ...){
-  reps <- length(x)
-  names(x) <- paste("Replicate", 1L:reps)
-  # CVcrit <- mean(sapply(x, function(x) x[["CV crit"]]))
-  # CVcritSD <- sd(sapply(x, function(x) x[["CV crit"]]))
-  # adjCVcrit <- mean(sapply(x, function(x) x[["adj CV crit"]]))
-  # adjCVcritSD <- sd(sapply(x, function(x) x[["adj CV crit"]]))
-  x$Average <- x[[1L]]
-  sumry <-   summarizeReps(x)
-  x$Average[["CV crit"]] <- sumry[["CV crit"]]
-  x$Average[["adj CV crit"]] <- sumry[["adj CV crit"]]
-  x$Average[["SD CV crit"]] <- sumry[["SD CV crit"]]
-  x$Average[["SD adj CV crit"]] <- sumry[["SD adj CV crit"]]
-  for (rep in seq_along(x)){
-    cat("\n", names(x)[rep], ":\n", sep="")
-    print(x[[rep]])
+  xx <- x
+  reps <- length(xx)
+  names(xx) <- paste("Replicate", 1L:reps)
+  xx$Average <- xx[[1L]]
+  sumry <-   summarizeReps(xx)
+  xx$Average[["CV crit"]] <- sumry[["CV crit"]]
+  xx$Average[["adj CV crit"]] <- sumry[["adj CV crit"]]
+  xx$Average[["SD CV crit"]] <- sumry[["SD CV crit"]]
+  xx$Average[["SD adj CV crit"]] <- sumry[["SD adj CV crit"]]
+  xx$Average$confint <- NULL
+  for (rep in seq_along(xx)){
+    cat("\n", names(xx)[rep], ":\n", sep="")
+    print(xx[[rep]])
   }
   return(invisible(x))
 }
 
 #' @describeIn cv \code{"lm"} method
 #' @export
-cv.lm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
-                  reps=1, seed, method=c("auto", "hatvalues", "Woodbury", "naive"),
+cv.lm <- function(model, data=insight::get_data(model),
+                  criterion=mse, k=10, reps=1, seed,
+                  confint = n >= 400, level=0.95,
+                  method=c("auto", "hatvalues", "Woodbury", "naive"),
                   ncores=1, ...){
   UpdateLM <- function(omit){
     # compute coefficients with omit cases deleted
@@ -269,10 +322,10 @@ cv.lm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
     b.i <- UpdateLM(indices.i)
     fit.all.i <- X %*% b.i
     fit.i <- fit.all.i[indices.i]
-    c(criterion(y[indices.i], fit.i), criterion(y, fit.all.i))
+    list(fit.i=fit.i, crit.all.i=criterion(y, fit.all.i))
   }
   X <- model.matrix(model)
-  y <- getResponse(model)
+  y <- GetResponse(model)
   w <- weights(model)
   if (is.null(w)) w <- rep(1, length(y))
   n <- nrow(data)
@@ -286,7 +339,7 @@ cv.lm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
   }
   if (k == n){
     if (reps > 1) stop("reps should not be > 1 for n-fold CV")
-    if (!missing(seed) && !is.null(seed)) warning("seed ignored for n-fold CV")
+    if (!missing(seed) && !is.null(seed)) message("Note: seed ignored for n-fold CV")
     seed <- NULL
   }
 
@@ -336,23 +389,40 @@ cv.lm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
   ends <- cumsum(folds) # end of each fold
   starts <- c(1, ends + 1)[-(k + 1)] # start of each fold
   indices <- if (n > k) sample(n, n)  else 1:n # permute cases
+  yhat <- numeric(n)
   if (ncores > 1L){
     cl <- makeCluster(ncores)
     registerDoParallel(cl)
-    result <- foreach(i = 1L:k, .combine=rbind) %dopar% {
+    result <- foreach(i = 1L:k) %dopar% {
       f(i)
     }
     stopCluster(cl)
-  } else {
-    result <- matrix(0, k, 2L)
     for (i in 1L:k){
-      result[i, ] <- f(i)
+      yhat[indices[starts[i]:ends[i]]] <- result[[i]]$fit.i
+    }
+  } else {
+    result <- vector(k, mode="list")
+    for (i in 1L:k){
+      result[[i]] <- f(i)
+      yhat[indices[starts[i]:ends[i]]] <- result[[i]]$fit.i
     }
   }
-  cv <- weighted.mean(result[, 1L], folds)
+  cv <- criterion(y, yhat)
   cv.full <- criterion(y, fitted(model))
-  adj.cv <- cv + cv.full - weighted.mean(result[, 2L], folds)
-  result <- list("CV crit" = cv, "adj CV crit" = adj.cv, "full crit" = cv.full,
+  loss <- getLossFn(cv) # casewise loss function
+  if (!is.null(loss)) {
+    adj.cv <- cv + cv.full -
+      weighted.mean(sapply(result, function(x) x$crit.all.i), folds)
+    se.cv <- sd(loss(y, yhat))/sqrt(n)
+    halfwidth <- qnorm(1 - (1 - level)/2)*se.cv
+    ci <- if (confint) c(lower = adj.cv - halfwidth, upper = adj.cv + halfwidth,
+                         level=round(level*100)) else NULL
+  } else {
+    adj.cv <- NULL
+    ci <- NULL
+  }
+  result <- list("CV crit" = cv, "adj CV crit" = adj.cv,
+                 "full crit" = cv.full, "confint"=ci,
                  "k" = if (k == n) "n" else k, "seed" = seed,
                  "method"=method,
                  "criterion" = deparse(substitute(criterion)))
@@ -377,8 +447,10 @@ cv.lm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
 
 #' @describeIn cv \code{"glm"} method
 #' @export
-cv.glm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
-                   reps=1, seed, method=c("exact", "hatvalues", "Woodbury"),
+cv.glm <- function(model, data=insight::get_data(model),
+                   criterion=mse, k=10, reps=1, seed,
+                   confint = n >= 400, level=0.95,
+                   method=c("exact", "hatvalues", "Woodbury"),
                    ncores=1,
                    ...){
   UpdateIWLS <- function(omit){
@@ -397,7 +469,7 @@ cv.glm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
     b.i <- UpdateIWLS(indices.i)
     fit.all.i <- linkinv(X %*% b.i)
     fit.i <- fit.all.i[indices.i]
-    c(criterion(y[indices.i], fit.i), criterion(y, fit.all.i))
+    list(fit.i=fit.i, crit.all.i=criterion(y, fit.all.i))
   }
   n <- nrow(data)
   if (is.character(k)){
@@ -410,7 +482,7 @@ cv.glm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
   }
   if (k == n){
     if (reps > 1) stop("reps should not be > 1 for n-fold CV")
-    if (!missing(seed) && !is.null(seed)) warning("seed ignored for n-fold CV")
+    if (!missing(seed) && !is.null(seed)) message("Note: seed ignored for n-fold CV")
     seed <- NULL
   }
   method <- match.arg(method)
@@ -428,12 +500,12 @@ cv.glm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
     if (inherits(result, "cv")) result$"criterion" <- deparse(substitute(criterion))
     return(result)
   } else if (method == "hatvalues") {
-    y <- getResponse(model)
+    y <- GetResponse(model)
     h <- hatvalues(model)
     if (any(abs(h - 1) < sqrt(.Machine$double.eps)))
       stop("there are hatvalues numerically equal to 1")
     yhat <- y - residuals(model, type="response")/(1 - h)
-    cv <- criterion(y, yhat)
+    cv <- criterion(y, yhat) # mean(mapply(criterion, y=y, yhat=yhat))
     result <- list(k="n", "CV crit" = cv, method=method,
                    "criterion" = deparse(substitute(criterion)))
     class(result) <- "cv"
@@ -443,7 +515,7 @@ cv.glm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
     p <- length(b)
     w <- weights(model, type="working")
     X <- model.matrix(model)
-    y <- getResponse(model)
+    y <- GetResponse(model)
     if (p > model$rank) {
       message(paste0("The model has ", if (sum(is.na(b)) == 1L) "an ",
                      "aliased coefficient", if (sum(is.na(b)) > 1L) "s", ":"))
@@ -468,23 +540,40 @@ cv.glm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
     ends <- cumsum(folds) # end of each fold
     starts <- c(1, ends + 1)[-(k + 1)] # start of each fold
     indices <- if (n > k) sample(n, n)  else 1:n # permute cases
+    yhat <- numeric(n)
     if (ncores > 1L){
       cl <- makeCluster(ncores)
       registerDoParallel(cl)
-      result <- foreach(i = 1L:k, .combine=rbind) %dopar% {
+      result <- foreach(i = 1L:k) %dopar% {
         f(i)
       }
       stopCluster(cl)
-    } else {
-      result <- matrix(0, k, 2L)
       for (i in 1L:k){
-        result[i, ] <- f(i)
+        yhat[indices[starts[i]:ends[i]]] <- result[[i]]$fit.i
+      }
+    } else {
+      result <- vector(k, mode="list")
+      for (i in 1L:k){
+        result[[i]] <- f(i)
+        yhat[indices[starts[i]:ends[i]]] <- result[[i]]$fit.i
       }
     }
-    cv <- weighted.mean(result[, 1L], folds)
+    cv <- criterion(y, yhat)
     cv.full <- criterion(y, fitted(model))
-    adj.cv <- cv + cv.full - weighted.mean(result[, 2L], folds)
-    result <- list("CV crit" = cv, "adj CV crit" = adj.cv, "full crit" = cv.full,
+    loss <- getLossFn(cv) # casewise loss function
+    if (!is.null(loss)) {
+      adj.cv <- cv + cv.full -
+        weighted.mean(sapply(result, function(x) x$crit.all.i), folds)
+      se.cv <- sd(loss(y, yhat))/sqrt(n)
+      halfwidth <- qnorm(1 - (1 - level)/2)*se.cv
+      ci <- if (confint) c(lower = adj.cv - halfwidth, upper = adj.cv + halfwidth,
+                           level=round(level*100)) else NULL
+    } else {
+      adj.cv <- NULL
+      ci <- NULL
+    }
+    result <- list("CV crit" = cv, "adj CV crit" = adj.cv,
+                   "full crit" = cv.full, confint=ci,
                    "k" = if (k == n) "n" else k, "seed" = seed,
                    "method"=method,
                    "criterion" = deparse(substitute(criterion)))
@@ -508,17 +597,40 @@ cv.glm <- function(model, data=insight::get_data(model), criterion=mse, k=10,
   }
 }
 
+#' @describeIn cv \code{"rlm"} method (to avoid inheriting the \code{"lm"} method)
+#' @export
+cv.rlm <- function(model, data, criterion, k, reps = 1, seed, ...){
+  result <- NextMethod(method="naive")
+  result$method <- NULL
+  result
+}
+
+
+
 # not exported
 
 summarizeReps <- function(x){
   CVcrit <- mean(sapply(x, function(x) x[["CV crit"]]))
   CVcritSD <- sd(sapply(x, function(x) x[["CV crit"]]))
   CVcritRange <- range(sapply(x, function(x) x[["CV crit"]]))
-  adjCVcrit <- mean(sapply(x, function(x) x[["adj CV crit"]]))
-  adjCVcritSD <- sd(sapply(x, function(x) x[["adj CV crit"]]))
-  adjCVcritRange<- range(sapply(x, function(x) x[["adj CV crit"]]))
+  if (!is.null(x[[1]][["adj CV crit"]])) {
+    adjCVcrit <- mean(sapply(x, function(x) x[["adj CV crit"]]))
+    adjCVcritSD <- sd(sapply(x, function(x) x[["adj CV crit"]]))
+    adjCVcritRange <- range(sapply(x, function(x) x[["adj CV crit"]]))
+  } else {
+    adjCVcrit <- adjCVcritSD <- adjCVcritRange <- NULL
+  }
   list("CV crit" = CVcrit, "adj CV crit" = adjCVcrit,
        "CV crit range" = CVcritRange,
        "SD CV crit" = CVcritSD, "SD adj CV crit" = adjCVcritSD,
        "adj CV crit range" = adjCVcritRange)
 }
+
+getLossFn <- function(cv){
+  fn.body <- attr(cv, "casewise loss")
+  if (is.null(fn.body)) return(NULL)
+  eval(parse(text=paste0("function(y, yhat) {\n",
+                         paste(fn.body, collapse="\n"),
+                         "\n}")))
+}
+

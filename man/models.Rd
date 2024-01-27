@@ -16,19 +16,23 @@ models(...)
 \method{plot}{cvModList}(
   x,
   y,
+  spread = c("range", "sd"),
+  confint = TRUE,
   xlab = "",
   ylab,
   main,
   axis.args = list(labels = names(x), las = 3L),
   col = palette()[2L],
   lwd = 2,
+  grid = TRUE,
   ...
 )
 }
 \arguments{
-\item{...}{for \code{cv()}, additional arguments to be passed to the \code{cv()} method
-applied to each model. For \code{models()}, two or more competing models fit to the
-the same data; the several models may be named. For the \code{print()}
+\item{...}{for \code{models()}, two or more competing models fit to the
+the same data; the several models may be named.
+For \code{cv()}, additional arguments to be passed to the \code{cv()} method
+applied to each model. For the \code{print()}
 method, arguments to be passed to the \code{print()} method for
 the individual model cross-validations. For the \code{plot()},
 method, arguments to be passed to the base \code{\link[base]{plot}()}
@@ -39,7 +43,7 @@ created by \code{models()}.}
 
 \item{data}{(required) the data set to which the models were fit.}
 
-\item{criterion}{the CV criterion (cost) function, defaults to
+\item{criterion}{the CV criterion ("cost" or lack-of-fit) function, defaults to
 \code{\link{mse}}.}
 
 \item{k}{the number of CV folds; may be omitted, in which case the value
@@ -52,7 +56,7 @@ individual models.}
 to be used to create the same set of CV folds for all of the models;
 if omitted, a seed will be randomly generated and saved.}
 
-\item{quietly}{If \code{TRUE} (the default), simple messages (for example about the
+\item{quietly}{if \code{TRUE} (the default), simple messages (for example about the
 value to which the random-number generator seed is set), but not warnings or
 errors, are suppressed.}
 
@@ -61,6 +65,14 @@ errors, are suppressed.}
 \item{y}{the name of the element in each \code{"cv"} object to be
 plotted; defaults to \code{"adj CV crit"}, if it exists, or to
 \code{"CV crit"}.}
+
+\item{spread}{if \code{"range"}, the default, show the range of CV criteria
+for each model along with their average; if \code{"sd"}, show the average
+plus or minus 1 standard deviation.}
+
+\item{confint}{if \code{TRUE} (the default) and if confidence intervals are
+in any of the \code{"cv"} objects, then plot the confidence intervals around the
+CV criteria.}
 
 \item{xlab}{label for the x-axis (defaults to blank).}
 
@@ -78,6 +90,8 @@ are used and can't be modified.}
 element of the color palette; see \code{\link{palette}()}.}
 
 \item{lwd}{line width for the line (defaults to 2).}
+
+\item{grid}{if \code{TRUE} (the default), include grid lines on the graph.}
 }
 \value{
 \code{models()} returns a \code{"modList"} object, the
@@ -86,7 +100,7 @@ element of the color palette; see \code{\link{palette}()}.}
 \description{
 A \code{\link{cv}()} method for an object of class  \code{"modlist"},
 created by the \code{models()} function. This \code{cv()} method simplifies
-the process of cross-validating several models on the same set of folds.
+the process of cross-validating several models on the same set of CV folds.
 \code{models()} performs some
 "sanity" checks, warning if the models are of different classes, and
 reporting an error if they are fit to apparently different data sets or
@@ -111,4 +125,11 @@ m3 <- lm(prestige ~ (income + education)*type, data=Duncan)
 (cv.models <- cv(models(m1=m1, m2=m2, m3=m3),
                  data=Duncan, seed=7949, reps=5))
 plot(cv.models)
+(cv.models.ci <- cv(models(m1=m1, m2=m2, m3=m3),
+                    data=Duncan, seed=5962, confint=TRUE, level=0.50))
+                 # nb: n too small for accurate CIs
+plot(cv.models.ci)
+}
+\seealso{
+\code{\link{cv}}, \code{\link{cvMixed}}.
 }

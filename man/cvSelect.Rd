@@ -4,13 +4,20 @@
 \alias{cvSelect}
 \alias{selectStepAIC}
 \alias{selectTrans}
+\alias{selectTransStepAIC}
 \alias{compareFolds}
+\alias{coef.cvSelect}
 \title{Cross-Validate a Model-Selection Procedure}
 \usage{
 cvSelect(
   procedure,
   data,
+  criterion = mse,
+  model,
+  y.expression,
   k = 10,
+  confint = n >= 400,
+  level = 0.95,
   reps = 1,
   save.coef = k <= 10,
   seed,
@@ -42,16 +49,49 @@ selectTrans(
   ...
 )
 
+selectTransStepAIC(
+  data,
+  indices,
+  save.coef = TRUE,
+  model,
+  criterion = mse,
+  predictors,
+  response,
+  family = c("bcPower", "bcnPower", "yjPower", "basicPower"),
+  family.y = c("bcPower", "bcnPower", "yjPower", "basicPower"),
+  rounded = TRUE,
+  AIC = TRUE,
+  ...
+)
+
 compareFolds(object, digits = 3, ...)
+
+\method{coef}{cvSelect}(object, average, NAs = 0, ...)
 }
 \arguments{
 \item{procedure}{a model-selection procedure function (see Details).}
 
 \item{data}{full data frame for model selection.}
 
+\item{criterion}{a CV criterion ("cost" or lack-of-fit) function.}
+
+\item{model}{a regression model object fit to data.}
+
+\item{y.expression}{normally the response variable is found from the
+\code{model} argument; but if, for a particular selection procedure, the
+\code{model} argument is absent, or if the response can't be inferred from the
+model, the response can be specified by an expression, such as \code{expression(log(income))},
+to be evaluated within the data set provided by the \code{data} argument.}
+
 \item{k}{perform k-fold cross-validation (default is 10); \code{k}
 may be a number or \code{"loo"} or \code{"n"} for n-fold (leave-one-out)
 cross-validation.}
+
+\item{confint}{if \code{TRUE} (the default if the number of cases is 400
+or greater), compute a confidence interval for the bias-corrected CV
+criterion, if the criterion is the average of casewise components.}
+
+\item{level}{confidence level (default \code{0.95}).}
 
 \item{reps}{number of times to replicate k-fold CV (default is \code{1})}
 
@@ -63,13 +103,10 @@ cross-validation.}
 \item{ncores}{number of cores to use for parallel computations
 (default is \code{1}, i.e., computations aren't done in parallel)}
 
-\item{...}{arguments to be passed to \code{procedure()}.}
+\item{...}{for \code{cvSelect()}, arguments to be passed to \code{procedure()};
+for \code{selectStepAIC()}, arguments to be passed to \code{stepAIC()}.}
 
 \item{indices}{indices of cases in data defining the current fold.}
-
-\item{model}{a regression model object fit to data.}
-
-\item{criterion}{a CV criterion function.}
 
 \item{AIC}{if \code{TRUE} (the default) use the AIC as the
 model-selection criterion; if \code{FALSE}, use the BIC.
@@ -86,38 +123,51 @@ won't be transformed.}
 \item{family}{transformation family for the predictors, one of
 \code{"bcPower", "bcnPower", "yjPower", "basicPower"},
 with \code{"bcPower"} as the default. These are the names of transformation
-functions in the \pkg{car} package; see \code{\link[car]{bcPower}}}
+functions in the \pkg{car} package; see \code{\link[car]{bcPower}()}}
 
 \item{family.y}{transformation family for the response,
 with \code{"bcPower"} as the default.}
 
 \item{rounded}{if \code{TRUE} (the default) use nicely rounded versions
-of the estimated transformation parameters (see \code{\link[car]{bcPower}}).}
+of the estimated transformation parameters (see \code{\link[car]{bcPower}()}).}
 
 \item{object}{an object of class \code{"cvSelect"}.}
 
-\item{digits}{significant digits for printing coefficients,
+\item{digits}{significant digits for printing coefficients
 (default \code{3}).}
+
+\item{average}{if supplied, a function, such as \code{mean} or \code{median},
+to use us in averaging estimates across folds; if missing, the
+estimates for each fold are returned.}
+
+\item{NAs}{values to substitute for \code{NA}s in calculating
+averaged estimates; the default, \code{0}, is appropriate, e.g.,
+for regression coefficients; the value \code{1} might be appropriate
+for power-transformation estimates.}
 }
 \value{
-An object of class \code{"cvSelect"}, inheriting from class \code{"cv"}, with the averaged CV criterion
-(\code{"CV crit"}), the adjusted average CV criterion (\code{"adj CV crit"}),
+An object of class \code{"cvSelect"},
+inheriting from class \code{"cv"}, with the CV criterion
+(\code{"CV crit"}), the bias-adjusted CV criterion (\code{"adj CV crit"}),
 the criterion for the model applied to the full data (\code{"full crit"}),
+the confidence interval and level for the bias-adjusted CV criterion (\code{"confint"}),
 the number of folds (\code{"k"}), the seed for R's random-number
 generator (\code{"seed"}), and (optionally) a list of coefficients
 (or, in the case of \code{selectTrans()}, estimated transformation
-parameters) for the selected models
+parameters, and in the case of \code{selectTransAndStepAIC()}, both regression coefficients
+and transformation parameters) for the selected models
 for each fold (\code{"coefficients"}).
 If \code{reps} > \code{1}, then an object of class \code{c("cvSelectList", "cvList")} is returned,
 which is literally a list of \code{c("cvSelect", "cv")} objects.
 }
 \description{
-A generic function to cross-validate a model-selection procedure,
-along with a procedure that applies the \code{\link[MASS]{stepAIC}()}
-model-selection function in the \pkg{MASS} package, and a procedure
+\code{cvSelect()} is a general function to cross-validate a model-selection procedure;
+\code{selectStepAIC()} is a procedure that applies the \code{\link[MASS]{stepAIC}()}
+model-selection function in the \pkg{MASS} package; \code{selectTrans()} is a procedure
 for selecting predictor and response transformations in regression, which
 uses the \code{\link[car]{powerTransform}()} function in the
-\pkg{car} package.
+\pkg{car} package; and \code{selectTransAndStepAIC()} combines predictor and response
+transformation with predictor selection.
 }
 \details{
 The model-selection function supplied as the \code{procedure} argument
@@ -129,23 +179,31 @@ the model-selection procedure is applied to the full \code{data}.}
 \item{other arguments}{to be passed via \code{...}
 from \code{cvSelect()}.}
 }
-\code{procedure()} should return a two-element vector with the result
-of applying a cross-validation criterion to the cases in
-the current fold for the model deleting that fold, and to
-all of the cases again for the model deleting the current fold.
+\code{procedure()} should return a list with the following
+named elements: \code{fit.i}, the vector of predicted values for the cases in
+the current fold computed from the model omitting these cases;
+\code{crit.all.i}, the CV criterion computed for all of the cases using
+the model omitting the current fold; and (optionally) \code{coefficients},
+parameter estimates from the model computed omitting the current fold.
 
 When the \code{indices} argument is missing, \code{procedure()} returns the cross-validation criterion for all of the cases based on
 the model fit to all of the cases.
 
 For examples of model-selection functions for the \code{procedure}
-argument, see the code for \code{selectStepAIC()} and for
-\code{selectTrans()}.
+argument, see the code for \code{selectStepAIC()},
+\code{selectTrans()}, and \code{selectTransAndStepAIC()}.
 
 For additional information, see the "Cross-validation of regression
 models" vignette (\code{vignette("cv", package="cv")})
 and the "Extending the cv package" vignette
 (\code{vignette("cv-extend", package="cv")}).
 }
+\section{Methods (by generic)}{
+\itemize{
+\item \code{coef(cvSelect)}: extract the coefficients from the selected models
+for the several folds and possibly average them.
+
+}}
 \section{Functions}{
 \itemize{
 \item \code{cvSelect()}: apply cross-validation to a model-selection procedure.
@@ -154,6 +212,9 @@ and the "Extending the cv package" vignette
 \pkg{MASS} package.
 
 \item \code{selectTrans()}: select transformations of the predictors and response.
+
+\item \code{selectTransStepAIC()}: select transformations of the predictors and response,
+and then select predictors.
 
 \item \code{compareFolds()}: print the coefficients from the selected models
 for the several folds.
@@ -174,9 +235,24 @@ cvt <- cvSelect(selectTrans, data=Prestige, model=m.pres, seed=123,
                 response="prestige", family="yjPower")
 cvt
 compareFolds(cvt)
+coef(cvt, average=median, NAs=1) # NAs not really needed here
 cv(m.pres, seed=123)
+
+Auto$year <- as.factor(Auto$year)
+Auto$origin <- factor(Auto$origin,
+                      labels=c("America", "Europe", "Japan"))
+rownames(Auto) <- make.names(Auto$name, unique=TRUE)
+Auto$name <- NULL
+m.auto <- lm(mpg ~ . , data=Auto)
+cvs <- cvSelect(selectTransStepAIC, data=Auto, seed=76692, model=m.auto,
+                criterion=medAbsErr,
+                predictors=c("cylinders", "displacement", "horsepower",
+                             "weight", "acceleration"),
+                response="mpg", AIC=FALSE)
+cvs
+compareFolds(cvs)
 }
 \seealso{
-\code{\link[MASS]{stepAIC}()}, \code{\link[car]{bcPower}},
-\code{\link[car]{powerTransform}()}
+\code{\link[MASS]{stepAIC}}, \code{\link[car]{bcPower}},
+\code{\link[car]{powerTransform}}, \code{\link{cv}}.
 }

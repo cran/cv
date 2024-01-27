@@ -50,21 +50,21 @@ for (p in 1:5){
 legend("topright", legend=1:5, col=2:6, lty=1:5, lwd=2,
        title="Degree", inset=0.02)
 
-## ----mpg-horsepower-MSE-se2---------------------------------------------------
+## ----mpg-horsepower-MSE-se----------------------------------------------------
 library("cv") # for mse() and other functions
 
-se <- mse <- numeric(10)
+var <- mse <- numeric(10)
 for (p in 1:10){
   m <- lm(mpg ~ poly(horsepower, p), data=Auto)
   mse[p] <- mse(Auto$mpg, fitted(m))
-  se[p] <- summary(m)$sigma
+  var[p] <- summary(m)$sigma^2
 }
 
-plot(c(1, 10), range(mse, se^2), type="n",
+plot(c(1, 10), range(mse, var), type="n",
      xlab="Degree of polynomial, p",
      ylab="Estimated Squared Error")
 lines(1:10, mse, lwd=2, lty=1, col=2, pch=16, type="b")
-lines(1:10, se^2, lwd=2, lty=2, col=3, pch=17, type="b")
+lines(1:10, var, lwd=2, lty=2, col=3, pch=17, type="b")
 legend("topright", inset=0.02,
        legend=c(expression(hat(sigma)^2), "MSE"),
        lwd=2, lty=2:1, col=3:2, pch=17:16)
@@ -313,6 +313,37 @@ plot(cvs_clusters, main="Model Comparison, Cluster-Based CV")
 cvs_cases <- cv(modlist, data=Data, seed=9693)
 plot(cvs_cases, main="Model Comparison, Case-Based CV")
 
+## ----pigs---------------------------------------------------------------------
+head(Pigs, 9)
+head(xtabs(~ id + week, data=Pigs), 3)
+tail(xtabs(~ id + week, data=Pigs), 3)
+
+## ----pigs-graph---------------------------------------------------------------
+plot(weight ~ week, data=Pigs, type="n")
+for (i in unique(Pigs$id)){
+  with(Pigs, lines(x=1:9, y=Pigs[id == i, "weight"],
+                   col="gray"))
+}
+abline(lm(weight ~ week, data=Pigs), col="blue", lwd=2)
+lines(with(Pigs, loess.smooth(week, weight, span=0.5)),
+      col="magenta", lty=2, lwd=2)
+
+## ----pigs-lmer----------------------------------------------------------------
+m.p <- lmer(weight ~ week + (1 | id) + (1 | week),
+            data=Pigs, REML=FALSE, # i.e., ML
+            control=lmerControl(optimizer="bobyqa"))
+summary(m.p)
+
+## ----pigs-cv------------------------------------------------------------------
+cv(m.p, clusterVariables="id")
+
+cv(m.p, clusterVariables="week")
+
+cv(m.p, clusterVariables=c("id", "week"), k=10, seed=8469)
+
+## ----pigs-cv-cases------------------------------------------------------------
+cv(m.p, k=10, seed=8469)
+
 ## ----mroz-reps----------------------------------------------------------------
 cv(m.mroz, criterion=BayesRule, seed=248, reps=5, 
    method="Woodbury")
@@ -339,9 +370,10 @@ anova(m.null, m.full)
 summary(m.null)
 
 ## ----forward-selection--------------------------------------------------------
-m.select <- MASS::stepAIC(m.null,
-                          direction="forward", trace=FALSE,
-                          scope=list(lower=~1, upper=formula(m.full)))
+library("MASS")  # for stepAIC()
+m.select <- stepAIC(m.null,
+                    direction="forward", trace=FALSE,
+                    scope=list(lower=~1, upper=formula(m.full)))
 summary(m.select)
 mse(D$y, fitted(m.select))
 
@@ -355,8 +387,8 @@ compareFolds(cv.select)
 summary(m.mroz)
 
 ## ----mroz-selection-----------------------------------------------------------
-m.mroz.sel <- MASS::stepAIC(m.mroz, k=log(nrow(Mroz)),
-                            trace=FALSE)
+m.mroz.sel <- stepAIC(m.mroz, k=log(nrow(Mroz)),
+                      trace=FALSE)
 summary(m.mroz.sel)
 BayesRule(Mroz$lfp == "yes",
           predict(m.mroz.sel, type="response"))
@@ -430,6 +462,88 @@ cvs <- cvSelect(selectTrans, data=Prestige, model=m.pres, seed=1463,
 cvs
 
 cv(m.pres, seed=1463) # untransformed model with same folds
+
+compareFolds(cvs)
+
+## ----Auto-redux---------------------------------------------------------------
+summary(Auto)
+xtabs(~ year, data=Auto)
+xtabs(~ origin, data=Auto)
+xtabs(~ cylinders, data=Auto)
+
+## ----Auto-explore-------------------------------------------------------------
+Auto$cylinders <- factor(Auto$cylinders,
+                         labels=c("3.4", "3.4", "5.6", "5.6", "8"))
+Auto$year <- as.factor(Auto$year)
+Auto$origin <- factor(Auto$origin,
+                      labels=c("America", "Europe", "Japan"))
+rownames(Auto) <- make.names(Auto$name, unique=TRUE)
+Auto$name <- NULL
+
+scatterplotMatrix(~ mpg + displacement + horsepower + weight + acceleration, 
+                  smooth=list(spread=FALSE), data=Auto)
+
+## ----Auto-working-model-------------------------------------------------------
+m.auto <- lm(mpg ~ ., data = Auto)
+summary(m.auto)
+
+Anova(m.auto)
+
+crPlots(m.auto)
+
+## ----Auto-transform-----------------------------------------------------------
+num.predictors <- c("displacement", "horsepower", "weight", "acceleration")
+tr.x <- powerTransform(Auto[, num.predictors])
+summary(tr.x)
+
+## ----Auto-with-transformed-predictors-----------------------------------------
+A <- Auto
+powers <- tr.x$roundlam
+for (pred in num.predictors){
+  A[, pred] <- bcPower(A[, pred], lambda=powers[pred])
+}
+head(A)
+
+m <- update(m.auto, data=A)
+
+## ----Auto-Box-Cox-------------------------------------------------------------
+summary(powerTransform(m))
+
+m <- update(m, log(mpg) ~ .)
+summary(m)
+
+Anova(m)
+
+## ----Auto-transformed-scatterplot-matrix--------------------------------------
+scatterplotMatrix(~ log(mpg) + displacement + horsepower + weight 
+                  + acceleration, 
+                  smooth=list(spread=FALSE), data=A)
+
+## ----Auto-CR-plots-transformed------------------------------------------------
+crPlots(m)
+
+## -----------------------------------------------------------------------------
+m.step <- stepAIC(m, k=log(nrow(A)), trace=FALSE)
+summary(m.step)
+
+Anova(m.step)
+
+## ----MSE-whole-selected-model-------------------------------------------------
+mse(Auto$mpg, exp(fitted(m.step)))
+
+## ----MSE-working-model--------------------------------------------------------
+mse(Auto$mpg, fitted(m.auto))
+
+## ----Auto-median-absolute-error-----------------------------------------------
+medAbsErr(Auto$mpg, exp(fitted(m.step)))
+medAbsErr(Auto$mpg, fitted(m.auto))
+
+## ----Auto-transform-and-select------------------------------------------------
+num.predictors
+cvs <- cvSelect(selectTransStepAIC, data=Auto, seed=76692, model=m.auto,
+                predictors=num.predictors,
+                response="mpg", AIC=FALSE, criterion=medAbsErr)
+cvs
 
 compareFolds(cvs)
 

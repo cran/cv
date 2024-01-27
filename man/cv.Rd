@@ -7,6 +7,7 @@
 \alias{print.cvList}
 \alias{cv.lm}
 \alias{cv.glm}
+\alias{cv.rlm}
 \title{Cross-Validate Regression Models}
 \usage{
 cv(model, data, criterion, k, reps = 1, seed, ...)
@@ -18,8 +19,9 @@ cv(model, data, criterion, k, reps = 1, seed, ...)
   k = 10,
   reps = 1,
   seed,
+  confint = n >= 400,
+  level = 0.95,
   ncores = 1,
-  method = NULL,
   type = "response",
   ...
 )
@@ -35,6 +37,8 @@ cv(model, data, criterion, k, reps = 1, seed, ...)
   k = 10,
   reps = 1,
   seed,
+  confint = n >= 400,
+  level = 0.95,
   method = c("auto", "hatvalues", "Woodbury", "naive"),
   ncores = 1,
   ...
@@ -47,17 +51,21 @@ cv(model, data, criterion, k, reps = 1, seed, ...)
   k = 10,
   reps = 1,
   seed,
+  confint = n >= 400,
+  level = 0.95,
   method = c("exact", "hatvalues", "Woodbury"),
   ncores = 1,
   ...
 )
+
+\method{cv}{rlm}(model, data, criterion, k, reps = 1, seed, ...)
 }
 \arguments{
 \item{model}{a regression model object (see Details).}
 
 \item{data}{data frame to which the model was fit (not usually necessary).}
 
-\item{criterion}{cross-validation criterion ("cost") function of form \code{f(y, yhat)}
+\item{criterion}{cross-validation criterion ("cost" or lack-of-fit) function of form \code{f(y, yhat)}
 where \code{y} is the observed values of the response and
 \code{yhat} the predicted values; the default is \code{\link{mse}}
 (the mean-squared error).}
@@ -74,27 +82,34 @@ for n-fold cross-validation}
 
 \item{...}{to match generic; passed to \code{predict()} for the default method.}
 
+\item{confint}{if \code{TRUE} (the default if the number of cases is 400
+or greater), compute a confidence interval for the bias-corrected CV
+criterion, if the criterion is the average of casewise components.}
+
+\item{level}{confidence level (default \code{0.95}).}
+
 \item{ncores}{number of cores to use for parallel computations
 (default is \code{1}, i.e., computations aren't done in parallel)}
-
-\item{method}{computational method to apply to a linear (i.e. \code{"lm"}) model
-or to a generalized linear (i.e., \code{"glm"}) model. See Details for an explanation
-of the available options.}
 
 \item{type}{for the default method, value to be passed to the
 \code{type} argument of \code{predict()};
 the default is \code{type="response"}, which is appropriate, e.g., for a \code{"glm"} model
 and may be recognized or ignored by \code{predict()} methods for other model classes.}
 
-\item{x}{a \code{cv} object to be printed}
+\item{x}{a \code{"cv"} or \code{"cvList"} object to be printed}
 
 \item{digits}{significant digits for printing,
 default taken from the \code{"digits"} option}
+
+\item{method}{computational method to apply to a linear (i.e. \code{"lm"}) model
+or to a generalized linear (i.e., \code{"glm"}) model. See Details for an explanation
+of the available options.}
 }
 \value{
-An object of class \code{"cv"}, with the averaged CV criterion
-(\code{"CV crit"}), the adjusted average CV criterion (\code{"adj CV crit"}),
+The \code{cv()} methods return an object of class \code{"cv"}, with the CV criterion
+(\code{"CV crit"}), the bias-adjusted CV criterion (\code{"adj CV crit"}),
 the criterion for the model applied to the full data (\code{"full crit"}),
+the confidence interval and level for the bias-adjusted CV criterion (\code{"confint"}),
 the number of folds (\code{"k"}), and the seed for R's random-number
 generator (\code{"seed"}). Some methods may return a
 subset of these components and may add additional information.
@@ -108,10 +123,10 @@ specific methods for linear and generalized-linear models that can be much
 more computationally efficient.
 }
 \details{
-The default method uses \code{\link{update}()} to refit the model
+The default \code{cv()} method uses \code{\link{update}()} to refit the model
 to each fold, and should work if there are appropriate \code{update()}
-and \code{\link{predict}()} methods and if the default method for \code{\link{getResponse}()}
-works or if a \code{getResponse()} method is supplied.
+and \code{\link{predict}()} methods, and if the default method for \code{\link{GetResponse}()}
+works or if a \code{GetResponse()} method is supplied.
 
 The \code{"lm"} and \code{"glm"} methods can use much faster computational
 algorithms, as selected by the \code{method} argument. The linear-model
@@ -135,6 +150,11 @@ the model via \code{update()} and is generally much slower. The
 default for generalized linear models is \code{method="exact"},
 which employs \code{update()}.
 
+There is also a method for robust linear models fit by
+\code{\link[MASS]{rlm}()} in the \pkg{MASS} package (to avoid
+inheriting the \code{"lm"} method for which the default \code{"auto"}
+computational method would be inappropriate).
+
 For additional details, see the "Cross-validation of regression models"
 vignette (\code{vignette("cv", package="cv")}).
 
@@ -149,6 +169,8 @@ models; see the "Extending the cv package" vignette
 \item \code{cv(lm)}: \code{"lm"} method
 
 \item \code{cv(glm)}: \code{"glm"} method
+
+\item \code{cv(rlm)}: \code{"rlm"} method (to avoid inheriting the \code{"lm"} method)
 
 }}
 \section{Methods (by generic)}{
@@ -171,4 +193,14 @@ cv(m.auto, seed=1234, reps=3)
 data("Mroz", package="carData")
 m.mroz <- glm(lfp ~ ., data=Mroz, family=binomial)
 cv(m.mroz, criterion=BayesRule, seed=123)
+
+data("Duncan", package="carData")
+m.lm <- lm(prestige ~ income + education, data=Duncan)
+m.rlm <- MASS::rlm(prestige ~ income + education,
+                   data=Duncan)
+cv(m.lm, k="loo", method="Woodbury")
+cv(m.rlm, k="loo")
+}
+\seealso{
+\code{\link{cvMixed}}, \code{\link{cvSelect}}.
 }
