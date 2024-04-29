@@ -3,44 +3,49 @@
 \name{cv}
 \alias{cv}
 \alias{cv.default}
-\alias{print.cv}
-\alias{print.cvList}
 \alias{cv.lm}
 \alias{cv.glm}
 \alias{cv.rlm}
+\alias{print.cv}
+\alias{print.cvList}
+\alias{as.data.frame.cv}
+\alias{as.data.frame.cvList}
+\alias{print.cvDataFrame}
+\alias{summary.cvDataFrame}
 \title{Cross-Validate Regression Models}
 \usage{
-cv(model, data, criterion, k, reps = 1, seed, ...)
+cv(model, data, criterion, k, reps = 1L, seed, ...)
 
 \method{cv}{default}(
   model,
   data = insight::get_data(model),
   criterion = mse,
-  k = 10,
-  reps = 1,
-  seed,
-  confint = n >= 400,
+  k = 10L,
+  reps = 1L,
+  seed = NULL,
+  criterion.name = deparse(substitute(criterion)),
+  details = k <= 10L,
+  confint = n >= 400L,
   level = 0.95,
-  ncores = 1,
+  ncores = 1L,
   type = "response",
+  start = FALSE,
+  model.function,
   ...
 )
-
-\method{print}{cv}(x, digits = getOption("digits"), ...)
-
-\method{print}{cvList}(x, ...)
 
 \method{cv}{lm}(
   model,
   data = insight::get_data(model),
   criterion = mse,
-  k = 10,
-  reps = 1,
-  seed,
-  confint = n >= 400,
+  k = 10L,
+  reps = 1L,
+  seed = NULL,
+  details = k <= 10L,
+  confint = n >= 400L,
   level = 0.95,
   method = c("auto", "hatvalues", "Woodbury", "naive"),
-  ncores = 1,
+  ncores = 1L,
   ...
 )
 
@@ -48,17 +53,45 @@ cv(model, data, criterion, k, reps = 1, seed, ...)
   model,
   data = insight::get_data(model),
   criterion = mse,
-  k = 10,
-  reps = 1,
-  seed,
-  confint = n >= 400,
+  k = 10L,
+  reps = 1L,
+  seed = NULL,
+  details = k <= 10L,
+  confint = n >= 400L,
   level = 0.95,
   method = c("exact", "hatvalues", "Woodbury"),
-  ncores = 1,
+  ncores = 1L,
+  start = FALSE,
   ...
 )
 
-\method{cv}{rlm}(model, data, criterion, k, reps = 1, seed, ...)
+\method{cv}{rlm}(model, data, criterion, k, reps = 1L, seed, ...)
+
+\method{print}{cv}(x, digits = getOption("digits"), ...)
+
+\method{print}{cvList}(x, ...)
+
+\method{as.data.frame}{cv}(
+  x,
+  row.names = NULL,
+  optional = TRUE,
+  rows = c("cv", "folds"),
+  columns = c("criteria", "coefficients"),
+  ...
+)
+
+\method{as.data.frame}{cvList}(x, row.names = NULL, optional = TRUE, ...)
+
+\method{print}{cvDataFrame}(x, digits = getOption("digits") - 2L, ...)
+
+\method{summary}{cvDataFrame}(
+  object,
+  formula,
+  subset = NULL,
+  fun = mean,
+  include = c("cv", "folds", "all"),
+  ...
+)
 }
 \arguments{
 \item{model}{a regression model object (see Details).}
@@ -74,13 +107,23 @@ where \code{y} is the observed values of the response and
 may be a number or \code{"loo"} or \code{"n"} for n-fold (leave-one-out)
 cross-validation.}
 
-\item{reps}{number of times to replicate k-fold CV (default is \code{1})}
+\item{reps}{number of times to replicate k-fold CV (default is \code{1}).}
 
 \item{seed}{for R's random number generator; optional, if not
 supplied a random seed will be selected and saved; not needed
-for n-fold cross-validation}
+for n-fold cross-validation.}
 
-\item{...}{to match generic; passed to \code{predict()} for the default method.}
+\item{...}{to match generic; passed to \code{predict()} for the default \code{cv()} method;
+passed to the \code{\link[car]{Tapply}()} function in the \pkg{car} package for
+\code{summary.cvDataFrame()}.}
+
+\item{criterion.name}{a character string giving the name of the CV criterion function
+in the returned \code{"cv"} object (not usually needed).}
+
+\item{details}{if \code{TRUE} (the default if the number of
+folds \code{k <= 10}), save detailed information about the value of the
+CV criterion for the cases in each fold and the regression coefficients
+with that fold deleted.}
 
 \item{confint}{if \code{TRUE} (the default if the number of cases is 400
 or greater), compute a confidence interval for the bias-corrected CV
@@ -89,21 +132,69 @@ criterion, if the criterion is the average of casewise components.}
 \item{level}{confidence level (default \code{0.95}).}
 
 \item{ncores}{number of cores to use for parallel computations
-(default is \code{1}, i.e., computations aren't done in parallel)}
+(default is \code{1}, i.e., computations aren't done in parallel).}
 
 \item{type}{for the default method, value to be passed to the
 \code{type} argument of \code{predict()};
 the default is \code{type="response"}, which is appropriate, e.g., for a \code{"glm"} model
 and may be recognized or ignored by \code{predict()} methods for other model classes.}
 
-\item{x}{a \code{"cv"} or \code{"cvList"} object to be printed}
+\item{start}{if \code{TRUE} (the default is \code{FALSE}), the \code{start} argument
+to \code{update()} is set to the vector of regression coefficients for the model fit
+to the full data, possibly making the CV updates faster, e.g., for a GLM.}
 
-\item{digits}{significant digits for printing,
-default taken from the \code{"digits"} option}
+\item{model.function}{a regression function, typically for a new \code{cv()} method that
+that calls \code{cv.default()} via \code{NextMethod()},
+residing in a package that's not a declared dependency of the \pkg{cv} package,
+e.g., \code{nnet::multinom}. It's usually not necessary to specify
+\code{model.function} to make \code{cv.default()} work.}
 
-\item{method}{computational method to apply to a linear (i.e. \code{"lm"}) model
+\item{method}{computational method to apply to a linear (i.e., \code{"lm"}) model
 or to a generalized linear (i.e., \code{"glm"}) model. See Details for an explanation
 of the available options.}
+
+\item{x}{a \code{"cv"}, \code{"cvList"}, or \code{"cvDataFrame"}
+object to be printed or coerced to a data frame.}
+
+\item{digits}{significant digits for printing,
+default taken from the \code{"digits"} option.}
+
+\item{row.names}{optional row names for the result,
+defaults to \code{NULL}.}
+
+\item{optional}{to match the \code{\link{as.data.frame}()} generic function;
+if \code{FALSE} (the default is \code{TRUE}), then the names of the columns
+of the returned data frame, including the names of coefficients,
+are coerced to syntactically correct names.}
+
+\item{rows}{the rows of the resulting data frame to retain: setting
+\code{rows="cv"} retains rows pertaining to the overall CV result
+(marked as "\code{fold 0}" ); setting \code{rows="folds"} retains
+rows pertaining to individual folds 1 through k; the default is
+\code{rows = c("cv", "folds")}, which retains all rows.}
+
+\item{columns}{the columns of the resulting data frame to retain:
+setting \code{columns="critera"} retains columns pertaining to CV
+criteria; setting \code{columns="coefficients"} retains columns pertaining
+to model coefficients (broadly construed); the default is
+\code{columns = c("criteria", "coefficients")}, which retains both;
+and the columns \code{"model"}, \code{"rep"}, and \code{"fold"}, if present,
+are always retained.}
+
+\item{object}{an object inheriting from \code{"cvDataFrame"} to summarize.}
+
+\item{formula}{of the form \code{some.criterion ~ classifying.variable(s)}
+(see examples).}
+
+\item{subset}{a subsetting expression; the default (\code{NULL})
+is not to subset the \code{"cvDataFrame"} object.}
+
+\item{fun}{summary function to apply, defaulting to \code{mean}.}
+
+\item{include}{which rows of the \code{"cvDataFrame"} to include in the
+summary. One of \code{"cv"} (the default), rows representing the overall CV
+results; \code{"folds"}, rows for individual folds; \code{"all"}, all rows
+(generally not sensible).}
 }
 \value{
 The \code{cv()} methods return an object of class \code{"cv"}, with the CV criterion
@@ -111,22 +202,30 @@ The \code{cv()} methods return an object of class \code{"cv"}, with the CV crite
 the criterion for the model applied to the full data (\code{"full crit"}),
 the confidence interval and level for the bias-adjusted CV criterion (\code{"confint"}),
 the number of folds (\code{"k"}), and the seed for R's random-number
-generator (\code{"seed"}). Some methods may return a
+generator (\code{"seed"}). If \code{details=TRUE}, then the returned object
+will also include a \code{"details"} component, which is a list of two
+elements: \code{"criterion"}, containing the CV criterion computed for the
+cases in each fold; and \code{"coefficients"}, regression coefficients computed
+for the model with each fold deleted.  Some methods may return a
 subset of these components and may add additional information.
 If \code{reps} > \code{1}, then an object of class \code{"cvList"} is returned,
 which is literally a list of \code{"cv"} objects.
 }
 \description{
-A parallelized generic k-fold (including n-fold, i.e., leave-one-out)
-cross-validation function, with a default method, and
+\code{cv()} is a parallelized generic k-fold (including n-fold, i.e., leave-one-out)
+cross-validation function, with a default method,
 specific methods for linear and generalized-linear models that can be much
-more computationally efficient.
+more computationally efficient, and a method for robust linear models.
+There are also \code{cv()} methods for \link[=cv.merMod]{mixed-effects models},
+for \link[=cv.function]{model-selection procedures},
+and for \link[=cv.modList]{several models fit to the same data},
+which are documented separately.
 }
 \details{
 The default \code{cv()} method uses \code{\link{update}()} to refit the model
 to each fold, and should work if there are appropriate \code{update()}
 and \code{\link{predict}()} methods, and if the default method for \code{\link{GetResponse}()}
-works or if a \code{GetResponse()} method is supplied.
+works or if a \code{\link{GetResponse}()} method is supplied.
 
 The \code{"lm"} and \code{"glm"} methods can use much faster computational
 algorithms, as selected by the \code{method} argument. The linear-model
@@ -148,14 +247,16 @@ which is equivalent to \code{method="hatvalues"} for n-fold cross-validation
 and \code{method="Woodbury"} otherwise; \code{method="naive"} refits
 the model via \code{update()} and is generally much slower. The
 default for generalized linear models is \code{method="exact"},
-which employs \code{update()}.
+which employs \code{update()}. This default is conservative, and
+it is usually safe to use \code{method="hatvalues"} for n-fold CV
+or \code{method="Woodbury"} for k-fold CV.
 
 There is also a method for robust linear models fit by
 \code{\link[MASS]{rlm}()} in the \pkg{MASS} package (to avoid
 inheriting the \code{"lm"} method for which the default \code{"auto"}
 computational method would be inappropriate).
 
-For additional details, see the "Cross-validation of regression models"
+For additional details, see the "Cross-validating regression models"
 vignette (\code{vignette("cv", package="cv")}).
 
 \code{cv()} is designed to be extensible to other classes of regression
@@ -164,31 +265,47 @@ models; see the "Extending the cv package" vignette
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{cv(default)}: \code{default} method
+\item \code{cv(default)}: \code{"default"} method.
 
-\item \code{cv(lm)}: \code{"lm"} method
+\item \code{cv(lm)}: \code{"lm"} method.
 
-\item \code{cv(glm)}: \code{"glm"} method
+\item \code{cv(glm)}: \code{"glm"} method.
 
-\item \code{cv(rlm)}: \code{"rlm"} method (to avoid inheriting the \code{"lm"} method)
+\item \code{cv(rlm)}: \code{"rlm"} method (to avoid inheriting the \code{"lm"} method).
 
 }}
 \section{Methods (by generic)}{
 \itemize{
-\item \code{print(cv)}: \code{print()} method
+\item \code{print(cv)}: \code{print()} method for \code{"cv"} objects.
+
+\item \code{as.data.frame(cv)}: \code{as.data.frame()} method for \code{"cv"} objects.
 
 }}
 \section{Functions}{
 \itemize{
-\item \code{print(cvList)}: \code{print()} method
+\item \code{print(cvList)}: \code{print()} method for \code{"cvList"} objects.
+
+\item \code{as.data.frame(cvList)}: \code{as.data.frame()} method for \code{"cvList"} objects.
+
+\item \code{print(cvDataFrame)}: \code{print()} method for \code{"cvDataFrame"} objects.
+
+\item \code{summary(cvDataFrame)}: \code{summary()} method for \code{"cvDataFrame"} objects.
 
 }}
 \examples{
 data("Auto", package="ISLR2")
 m.auto <- lm(mpg ~ horsepower, data=Auto)
 cv(m.auto,  k="loo")
-cv(m.auto, seed=1234)
-cv(m.auto, seed=1234, reps=3)
+(cv.auto <- cv(m.auto, seed=1234))
+compareFolds(cv.auto)
+(cv.auto.reps <- cv(m.auto, seed=1234, reps=3))
+D.auto.reps <- as.data.frame(cv.auto.reps)
+head(D.auto.reps)
+summary(D.auto.reps, mse ~ rep + fold, include="folds")
+summary(D.auto.reps, mse ~ rep + fold, include = "folds",
+        subset = fold <= 5) # first 5 folds
+summary(D.auto.reps, mse ~ rep, include="folds")
+summary(D.auto.reps, mse ~ rep, fun=sd, include="folds")
 
 data("Mroz", package="carData")
 m.mroz <- glm(lfp ~ ., data=Mroz, family=binomial)
@@ -200,7 +317,9 @@ m.rlm <- MASS::rlm(prestige ~ income + education,
                    data=Duncan)
 cv(m.lm, k="loo", method="Woodbury")
 cv(m.rlm, k="loo")
+
 }
 \seealso{
-\code{\link{cvMixed}}, \code{\link{cvSelect}}.
+\code{\link{cv.merMod}}, \code{\link{cv.function}},
+\code{\link{cv.modList}}.
 }

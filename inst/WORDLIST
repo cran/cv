@@ -100,3 +100,7 @@ rightarrow
 GetResponse
 getResponse
 selectTransStepAIC
+selectModelList
+CVs
+cvCompute
+multinom
