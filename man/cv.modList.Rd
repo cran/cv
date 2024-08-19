@@ -75,7 +75,10 @@ procedure.}
 applied to each model.
 
 For \code{models()}, two or more competing models fit to the
-the same data; the several models may be named.
+the same data; the several models may be named. It is also possible
+to specify a single argument, which should then be list of models
+(which has the effect of turning a list of models into a \code{"modList"}
+object).
 
 For the \code{print()} method, arguments to be passed to the \code{print()} method for
 the individual model cross-validations.
@@ -165,11 +168,11 @@ head(D.cv.models)
 summary(D.cv.models, criterion ~ model + rep, include="folds")
 plot(cv.models)
 (cv.models.ci <- cv(models(m1=m1, m2=m2, m3=m3),
-                    data=Duncan, seed=5962, confint=TRUE, level=0.50))
+                    data=Duncan, seed=5963, confint=TRUE, level=0.50))
                  # nb: n too small for accurate CIs
 plot(cv.models.ci)
 (cv.models.recursive <- cv(models(m1=m1, m2=m2, m3=m3),
-                           data=Duncan, seed=5962,
+                           data=Duncan, seed=5963,
                            recursive=TRUE, save.model=TRUE))
 cv.models.recursive$selected.model
 }

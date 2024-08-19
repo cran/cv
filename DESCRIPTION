@@ -1,8 +1,8 @@
 Package: cv
 Type: Package
 Title: Cross-Validating Regression Models
-Version: 2.0.0
-Date: 2024-04-14
+Version: 2.0.2
+Date: 2024-08-04
 Authors@R: c(person("John", "Fox", role = "aut", email = "jfox@mcmaster.ca",
   comment = c(ORCID = "0000-0002-1196-8012")),
 	person("Georges", "Monette", role = c("aut", "cre"), email = "georges+cv@yorku.ca"))
@@ -25,14 +25,14 @@ VignetteBuilder: knitr, rmarkdown
 License: GPL (>= 2)
 Encoding: UTF-8
 Language: en-US
-RoxygenNote: 7.3.1
+RoxygenNote: 7.3.2
 URL: https://gmonette.github.io/cv/,
         https://CRAN.R-project.org/package=cv
 BugReports: https://github.com/gmonette/cv/issues
 NeedsCompilation: no
-Packaged: 2024-04-17 14:04:42 UTC; johnfox
+Packaged: 2024-08-04 17:39:44 UTC; georges
 Author: John Fox [aut] (<https://orcid.org/0000-0002-1196-8012>),
   Georges Monette [aut, cre]
 Maintainer: Georges Monette <georges+cv@yorku.ca>
 Repository: CRAN
-Date/Publication: 2024-04-29 18:00:02 UTC
+Date/Publication: 2024-08-19 03:50:02 UTC

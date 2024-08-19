@@ -34,7 +34,10 @@
 #' applied to each model.
 #'
 #' For \code{models()}, two or more competing models fit to the
-#' the same data; the several models may be named.
+#' the same data; the several models may be named. It is also possible
+#' to specify a single argument, which should then be list of models
+#' (which has the effect of turning a list of models into a \code{"modList"}
+#' object).
 #'
 #' For the \code{print()} method, arguments to be passed to the \code{print()} method for
 #' the individual model cross-validations.
@@ -79,11 +82,11 @@
 #' summary(D.cv.models, criterion ~ model + rep, include="folds")
 #' plot(cv.models)
 #' (cv.models.ci <- cv(models(m1=m1, m2=m2, m3=m3),
-#'                     data=Duncan, seed=5962, confint=TRUE, level=0.50))
+#'                     data=Duncan, seed=5963, confint=TRUE, level=0.50))
 #'                  # nb: n too small for accurate CIs
 #' plot(cv.models.ci)
 #' (cv.models.recursive <- cv(models(m1=m1, m2=m2, m3=m3),
-#'                            data=Duncan, seed=5962,
+#'                            data=Duncan, seed=5963,
 #'                            recursive=TRUE, save.model=TRUE))
 #' cv.models.recursive$selected.model
 
@@ -179,8 +182,13 @@ cv.modList <-
 #' @export
 models <- function(...) {
   models <- list(...)
+  cls <- class(models[[1]])
+  if (length(models) == 1 && length(cls) == 1 && cls == "list")
+    models <- models[[1]]
   if (length(models) < 2L)
-    stop("fewer than 2 models to be compared")
+    stop("fewer than 2 models to be compared\n",
+         "or inappropriate argument, ",
+         deparse(substitute(...)))
   classes <- sapply(models, function(m)
     class(m)[1L])
   n <- sapply(models, function(m)

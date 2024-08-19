@@ -12,7 +12,7 @@
 
 <meta name="author" content="John Fox and Georges Monette" />
 
-<meta name="date" content="2024-04-17" />
+<meta name="date" content="2024-08-04" />
 
 <title>Computational and technical notes on cross-validating regression models</title>
 
@@ -51,7 +51,7 @@ overflow: visible;
 </style>
 <style type="text/css" data-origin="pandoc">
 pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span { line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
 .sourceCode { overflow: visible; }
 code.sourceCode > span { color: inherit; text-decoration: inherit; }
@@ -150,6 +150,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; }
 div.csl-bib-body { }
 div.csl-entry {
 clear: both;
+margin-bottom: 0em;
 }
 .hanging div.csl-entry {
 margin-left:2em;
@@ -363,7 +364,7 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 <h1 class="title toc-ignore">Computational and technical notes on
 cross-validating regression models</h1>
 <h4 class="author">John Fox and Georges Monette</h4>
-<h4 class="date">2024-04-17</h4>
+<h4 class="date">2024-08-04</h4>
 
 
 
@@ -411,7 +412,7 @@ approach can break down when one or more hatvalues are equal to 1, in
 which case the formula for <span class="math inline">\(\widehat{y}_{-i}\)</span> requires division by
 0.</p>
 <p>To compute cross-validated fitted values when the folds contain more
-than one case, we make use of the Woodbury matrix identify <span class="citation">(Hager, 1989)</span>, <span class="math display">\[
+than one case, we make use of the Woodbury matrix identity <span class="citation">(Hager, 1989)</span>, <span class="math display">\[
 \left(\mathbf{A}_{m \times m} + \mathbf{U}_{m \times k}
 \mathbf{C}_{k \times k} \mathbf{V}_{k \times m} \right)^{-1} =
 \mathbf{A}^{-1} - \mathbf{A}^{-1}\mathbf{U} \left(\mathbf{C}^{-1} +
@@ -531,14 +532,12 @@ for the timings <span class="citation">(Mersmann, 2023)</span>:</p>
 <span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a>  <span class="at">cv.glm =</span> boot<span class="sc">::</span><span class="fu">cv.glm</span>(Auto, m.auto.glm),</span>
 <span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a>  <span class="at">times =</span> <span class="dv">10</span></span>
 <span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a>)</span>
-<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a><span class="co">#&gt; Warning in microbenchmark::microbenchmark(hatvalues = cv(m.auto, k = &quot;loo&quot;), :</span></span>
-<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a><span class="co">#&gt; less accurate nanosecond times to avoid potential integer overflows</span></span>
-<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a><span class="co">#&gt; Unit: microseconds</span></span>
-<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a><span class="co">#&gt;       expr       min       lq     mean   median       uq      max neval cld</span></span>
-<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a><span class="co">#&gt;  hatvalues    989.45   1160.7   1169.5   1174.7   1192.5   1282.5    10 a  </span></span>
-<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a><span class="co">#&gt;   Woodbury  12141.29  12179.6  12375.9  12332.0  12566.1  12746.2    10 a  </span></span>
-<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a><span class="co">#&gt;      naive 216572.41 219644.3 220622.5 220570.7 222222.3 223352.0    10  b </span></span>
-<span id="cb2-19"><a href="#cb2-19" tabindex="-1"></a><span class="co">#&gt;     cv.glm 377859.03 381541.5 399800.4 384608.7 430889.8 451316.4    10   c</span></span></code></pre></div>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a><span class="co">#&gt; Unit: milliseconds</span></span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a><span class="co">#&gt;       expr      min       lq     mean   median       uq      max neval</span></span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a><span class="co">#&gt;  hatvalues   1.3345   1.5178   1.5347   1.5442   1.5801   1.6284    10</span></span>
+<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a><span class="co">#&gt;   Woodbury  14.9877  15.0436  15.2659  15.2147  15.4062  15.7366    10</span></span>
+<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a><span class="co">#&gt;      naive 315.0382 316.9830 320.9941 321.9218 323.7760 330.4423    10</span></span>
+<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a><span class="co">#&gt;     cv.glm 550.5770 557.5320 579.8248 565.4353 581.3043 666.1158    10</span></span></code></pre></div>
 <p>On our computer, using the hatvalues is about an order of magnitude
 faster than employing Woodbury matrix updates, and more than two orders
 of magnitude faster than refitting the model.<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a></p>
@@ -626,16 +625,11 @@ comparable to <code>cv()</code> with <code>method=&quot;exact&quot;</code>):</p>
 <span id="cb4-17"><a href="#cb4-17" tabindex="-1"></a>  <span class="at">times =</span> <span class="dv">10</span></span>
 <span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a>)</span>
 <span id="cb4-19"><a href="#cb4-19" tabindex="-1"></a><span class="co">#&gt; Unit: milliseconds</span></span>
-<span id="cb4-20"><a href="#cb4-20" tabindex="-1"></a><span class="co">#&gt;       expr       min        lq      mean    median        uq       max neval</span></span>
-<span id="cb4-21"><a href="#cb4-21" tabindex="-1"></a><span class="co">#&gt;  hatvalues    1.0662    1.0898    1.2493    1.3424    1.3482    1.3814    10</span></span>
-<span id="cb4-22"><a href="#cb4-22" tabindex="-1"></a><span class="co">#&gt;   Woodbury   40.9706   41.6086   43.1168   43.4238   44.4415   44.9395    10</span></span>
-<span id="cb4-23"><a href="#cb4-23" tabindex="-1"></a><span class="co">#&gt;      exact 1738.8318 1764.3418 1785.2642 1774.3105 1818.1838 1834.7521    10</span></span>
-<span id="cb4-24"><a href="#cb4-24" tabindex="-1"></a><span class="co">#&gt;     cv.glm 2010.3348 2027.7473 2114.2633 2113.6089 2174.4127 2303.9434    10</span></span>
-<span id="cb4-25"><a href="#cb4-25" tabindex="-1"></a><span class="co">#&gt;  cld</span></span>
-<span id="cb4-26"><a href="#cb4-26" tabindex="-1"></a><span class="co">#&gt;  a  </span></span>
-<span id="cb4-27"><a href="#cb4-27" tabindex="-1"></a><span class="co">#&gt;  a  </span></span>
-<span id="cb4-28"><a href="#cb4-28" tabindex="-1"></a><span class="co">#&gt;   b </span></span>
-<span id="cb4-29"><a href="#cb4-29" tabindex="-1"></a><span class="co">#&gt;    c</span></span></code></pre></div>
+<span id="cb4-20"><a href="#cb4-20" tabindex="-1"></a><span class="co">#&gt;       expr       min        lq      mean    median        uq      max neval</span></span>
+<span id="cb4-21"><a href="#cb4-21" tabindex="-1"></a><span class="co">#&gt;  hatvalues    1.4388    1.6126    2.0269    1.6524    1.7319    5.273    10</span></span>
+<span id="cb4-22"><a href="#cb4-22" tabindex="-1"></a><span class="co">#&gt;   Woodbury   47.5865   48.6913   49.6252   49.5880   50.1344   52.654    10</span></span>
+<span id="cb4-23"><a href="#cb4-23" tabindex="-1"></a><span class="co">#&gt;      exact 2066.3274 2090.2715 2136.2337 2119.0919 2178.5412 2262.585    10</span></span>
+<span id="cb4-24"><a href="#cb4-24" tabindex="-1"></a><span class="co">#&gt;     cv.glm 2452.5692 2477.5964 2527.5282 2540.4879 2543.2671 2644.205    10</span></span></code></pre></div>
 <p>There is a substantial time penalty associated with exact
 computations.</p>
 </div>
@@ -819,9 +813,11 @@ can be written as solutions of the following system of <span class="math inline"
 matrix of 1s conformable with <span class="math inline">\(\mathbf{Y}\)</span>; <span class="math inline">\(\mathbf{c}_0 = [\mathrm{cv}(1,0), c(2,0), ...,
 \mathrm{cv}(n_v,0)]^T\)</span>; <span class="math inline">\(\mathbf{c}_1
 = [\mathrm{cv}(1,1), c(2,1), ..., \mathrm{cv}(n_v,1)]^T\)</span>; <span class="math inline">\([\mathbf{U} -\mathbf{Y}, \mathbf{Y}]_{(2^{n_v}
-\times 2n_v)}\)</span> and <span class="math inline">\(\begin{bmatrix}\begin{aligned} \mathbf{c}_0 \\
-\mathbf{c}_1 \end{aligned} \end{bmatrix}_{(2n_v \times 1)}\)</span> are
-partitioned matrices; and <span class="math inline">\(\mathbf{\widehat{Y}}_{(2^{n_v} \times
+\times 2n_v)}\)</span> and <span class="math inline">\(\begin{bmatrix}\begin{aligned}
+\mathbf{c}_0 \\ \mathbf{c}_1
+\end{aligned}
+\end{bmatrix}_{(2n_v \times 1)}\)</span> are partitioned matrices; and
+<span class="math inline">\(\mathbf{\widehat{Y}}_{(2^{n_v} \times
 n_v)}\)</span> is a matrix each of whose rows consists of the integers 1
 to <span class="math inline">\(n_v\)</span>.</p>
 <p>We can test whether equation (<span class="math inline">\(\ref{eq:lin}\)</span>) has a solution for any
@@ -872,7 +868,7 @@ criterion.</p>
 </div>
 <div id="references" class="section level2 unnumbered">
 <h2 class="unnumbered">References</h2>
-<div id="refs" class="references csl-bib-body hanging-indent" line-spacing="2">
+<div id="refs" class="references csl-bib-body hanging-indent" entry-spacing="0" line-spacing="2">
 <div id="ref-ArlotCelisse:2010" class="csl-entry">
 Arlot, S., &amp; Celisse, A. (2010). <span class="nocase">A survey of
 cross-validation procedures for model selection</span>. <em>Statistics
