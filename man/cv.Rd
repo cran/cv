@@ -7,7 +7,15 @@
 \alias{cv.glm}
 \alias{cv.rlm}
 \alias{print.cv}
+\alias{summary.cv}
 \alias{print.cvList}
+\alias{summary.cvList}
+\alias{plot.cv}
+\alias{plot.cvList}
+\alias{cvInfo}
+\alias{cvInfo.cv}
+\alias{cvInfo.cvModList}
+\alias{cvInfo.cvList}
 \alias{as.data.frame.cv}
 \alias{as.data.frame.cvList}
 \alias{print.cvDataFrame}
@@ -69,7 +77,44 @@ cv(model, data, criterion, k, reps = 1L, seed, ...)
 
 \method{print}{cv}(x, digits = getOption("digits"), ...)
 
+\method{summary}{cv}(object, digits = getOption("digits"), ...)
+
 \method{print}{cvList}(x, ...)
+
+\method{summary}{cvList}(object, ...)
+
+\method{plot}{cv}(x, y, what = c("CV criterion", "coefficients"), ...)
+
+\method{plot}{cvList}(
+  x,
+  y,
+  what = c("adjusted CV criterion", "CV criterion"),
+  confint = TRUE,
+  ...
+)
+
+cvInfo(object, what, ...)
+
+\method{cvInfo}{cv}(
+  object,
+  what = c("CV criterion", "adjusted CV criterion", "full CV criterion", "confint", "SE",
+    "k", "seed", "method", "criterion name"),
+  ...
+)
+
+\method{cvInfo}{cvModList}(
+  object,
+  what = c("CV criterion", "adjusted CV criterion", "full CV criterion", "confint", "SE",
+    "k", "seed", "method", "criterion name"),
+  ...
+)
+
+\method{cvInfo}{cvList}(
+  object,
+  what = c("CV criterion", "adjusted CV criterion", "full CV criterion", "confint", "SE",
+    "k", "seed", "method", "criterion name"),
+  ...
+)
 
 \method{as.data.frame}{cv}(
   x,
@@ -115,7 +160,8 @@ for n-fold cross-validation.}
 
 \item{...}{to match generic; passed to \code{predict()} for the default \code{cv()} method;
 passed to the \code{\link[car]{Tapply}()} function in the \pkg{car} package for
-\code{summary.cvDataFrame()}.}
+\code{summary.cvDataFrame()}; passed to default \code{\link{plot}()} method for
+\code{plot.cvList()} or \code{plot.cv()}.}
 
 \item{criterion.name}{a character string giving the name of the CV criterion function
 in the returned \code{"cv"} object (not usually needed).}
@@ -127,7 +173,10 @@ with that fold deleted.}
 
 \item{confint}{if \code{TRUE} (the default if the number of cases is 400
 or greater), compute a confidence interval for the bias-corrected CV
-criterion, if the criterion is the average of casewise components.}
+criterion, if the criterion is the average of casewise components;
+for \code{plot.cvList()}, whether to plot confidence intervals around the
+biased-adjusted CV criterion, defaulting to \code{TRUE} and applicable only
+if confidence intervals are included in the \code{"cv"} object.}
 
 \item{level}{confidence level (default \code{0.95}).}
 
@@ -154,10 +203,35 @@ or to a generalized linear (i.e., \code{"glm"}) model. See Details for an explan
 of the available options.}
 
 \item{x}{a \code{"cv"}, \code{"cvList"}, or \code{"cvDataFrame"}
-object to be printed or coerced to a data frame.}
+object to be plotted or summarized.}
 
 \item{digits}{significant digits for printing,
 default taken from the \code{"digits"} option.}
+
+\item{object}{an object to summarize or a \code{"cv"}, \code{"cvModlist"},
+or \code{"cvList"} object from which to extract information via \code{cvInfo()}.}
+
+\item{y}{to match the \code{\link{plot}()} generic function, ignored.}
+
+\item{what}{for \code{plot()} methods, what to plot: for the \code{"cv"} method, either \code{"CV criterion"}
+(the default), or \code{"coefficients"};
+for the \code{"cvList"} method, either \code{"adjusted CV criterion"}
+(the default if present in the \code{"cv"} object) or \code{"CV object"}.
+
+For \code{cvInfo()}, the information to extract from a \code{"cv"},
+\code{"cvModList"}, or \code{"cvList"} object,
+one of: \code{"CV criterion"}, \code{"adjusted CV criterion"},
+\code{"full CV criterion"} (the CV criterion applied to the model fit to the
+full data set), \code{"SE"} (the standard error of the adjusted CV criterion),
+\code{"confint"} (confidence interval for the adjusted CV criterion),
+\code{"k"}, (the number of folds), \code{"seed"} (the seed employed for
+R's random-number generator), \code{"method"} (the computational method
+employed, e.g., for a \code{"lm"} model object), or \code{"criterion name"}
+(the CV criterion employed); not all of these elements may be present, in
+which case \code{cvInfo()} would return \code{NULL}.
+
+Partial matching is supported, so, e.g., \code{cvInfo(cv-object, "adjusted")}
+is equivalent to \code{cvInfo(cv-object, "adjusted CV criterion")}}
 
 \item{row.names}{optional row names for the result,
 defaults to \code{NULL}.}
@@ -180,8 +254,6 @@ to model coefficients (broadly construed); the default is
 \code{columns = c("criteria", "coefficients")}, which retains both;
 and the columns \code{"model"}, \code{"rep"}, and \code{"fold"}, if present,
 are always retained.}
-
-\item{object}{an object inheriting from \code{"cvDataFrame"} to summarize.}
 
 \item{formula}{of the form \code{some.criterion ~ classifying.variable(s)}
 (see examples).}
@@ -278,12 +350,22 @@ models; see the "Extending the cv package" vignette
 \itemize{
 \item \code{print(cv)}: \code{print()} method for \code{"cv"} objects.
 
+\item \code{summary(cv)}: \code{summary()} method for \code{"cv"} objects.
+
+\item \code{plot(cv)}: \code{plot()} method for \code{"cv"} objects.
+
 \item \code{as.data.frame(cv)}: \code{as.data.frame()} method for \code{"cv"} objects.
 
 }}
 \section{Functions}{
 \itemize{
 \item \code{print(cvList)}: \code{print()} method for \code{"cvList"} objects.
+
+\item \code{summary(cvList)}: \code{summary()} method for \code{"cvList"} objects.
+
+\item \code{plot(cvList)}: \code{plot()} method for \code{"cvList"} objects.
+
+\item \code{cvInfo()}: extract information from a \code{"cv"} object.
 
 \item \code{as.data.frame(cvList)}: \code{as.data.frame()} method for \code{"cvList"} objects.
 
@@ -293,12 +375,20 @@ models; see the "Extending the cv package" vignette
 
 }}
 \examples{
+if (requireNamespace("ISLR2", quietly=TRUE)){
+withAutoprint({
 data("Auto", package="ISLR2")
 m.auto <- lm(mpg ~ horsepower, data=Auto)
 cv(m.auto,  k="loo")
-(cv.auto <- cv(m.auto, seed=1234))
+summary(cv(m.auto,  k="loo"))
+summary(cv.auto <- cv(m.auto, seed=1234))
 compareFolds(cv.auto)
-(cv.auto.reps <- cv(m.auto, seed=1234, reps=3))
+plot(cv.auto)
+plot(cv.auto, what="coefficients")
+summary(cv.auto.reps <- cv(m.auto, seed=1234, reps=3))
+cvInfo(cv.auto.reps, what="adjusted CV criterion")
+plot(cv.auto.reps)
+plot(cv(m.auto, seed=1234, reps=10, confint=TRUE))
 D.auto.reps <- as.data.frame(cv.auto.reps)
 head(D.auto.reps)
 summary(D.auto.reps, mse ~ rep + fold, include="folds")
@@ -306,17 +396,30 @@ summary(D.auto.reps, mse ~ rep + fold, include = "folds",
         subset = fold <= 5) # first 5 folds
 summary(D.auto.reps, mse ~ rep, include="folds")
 summary(D.auto.reps, mse ~ rep, fun=sd, include="folds")
+})
+} else {
+cat("\n install 'ISLR2' package to run these examples\n")
+}
 
+if (requireNamespace("carData", quietly=TRUE)){
+withAutoprint({
 data("Mroz", package="carData")
 m.mroz <- glm(lfp ~ ., data=Mroz, family=binomial)
-cv(m.mroz, criterion=BayesRule, seed=123)
+summary(cv.mroz <- cv(m.mroz, criterion=BayesRule, seed=123))
+cvInfo(cv.mroz)
+cvInfo(cv.mroz, "adjusted")
+cvInfo(cv.mroz, "confint")
 
 data("Duncan", package="carData")
 m.lm <- lm(prestige ~ income + education, data=Duncan)
 m.rlm <- MASS::rlm(prestige ~ income + education,
                    data=Duncan)
-cv(m.lm, k="loo", method="Woodbury")
-cv(m.rlm, k="loo")
+summary(cv(m.lm, k="loo", method="Woodbury"))
+summary(cv(m.rlm, k="loo"))
+})
+} else {
+cat("\n install 'carData' package to run these examples\n")
+}
 
 }
 \seealso{

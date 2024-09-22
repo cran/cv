@@ -23,7 +23,10 @@
 #' @param reps number of times to replicate k-fold CV (default is \code{1}).
 #' @param confint if \code{TRUE} (the default if the number of cases is 400
 #' or greater), compute a confidence interval for the bias-corrected CV
-#' criterion, if the criterion is the average of casewise components.
+#' criterion, if the criterion is the average of casewise components;
+#' for \code{plot.cvList()}, whether to plot confidence intervals around the
+#' biased-adjusted CV criterion, defaulting to \code{TRUE} and applicable only
+#' if confidence intervals are included in the \code{"cv"} object.
 #' @param level confidence level (default \code{0.95}).
 #' @param seed for R's random number generator; optional, if not
 #' supplied a random seed will be selected and saved; not needed
@@ -46,7 +49,8 @@
 #' to the full data, possibly making the CV updates faster, e.g., for a GLM.
 #' @param ... to match generic; passed to \code{predict()} for the default \code{cv()} method;
 #' passed to the \code{\link[car]{Tapply}()} function in the \pkg{car} package for
-#' \code{summary.cvDataFrame()}.
+#' \code{summary.cvDataFrame()}; passed to default \code{\link{plot}()} method for
+#' \code{plot.cvList()} or \code{plot.cv()}.
 #' @param model.function a regression function, typically for a new \code{cv()} method that
 #' that calls \code{cv.default()} via \code{NextMethod()},
 #' residing in a package that's not a declared dependency of the \pkg{cv} package,
@@ -113,12 +117,20 @@
 #' (\code{vignette("cv-extend", package="cv")}).
 #'
 #' @examples
+#' if (requireNamespace("ISLR2", quietly=TRUE)){
+#' withAutoprint({
 #' data("Auto", package="ISLR2")
 #' m.auto <- lm(mpg ~ horsepower, data=Auto)
 #' cv(m.auto,  k="loo")
-#' (cv.auto <- cv(m.auto, seed=1234))
+#' summary(cv(m.auto,  k="loo"))
+#' summary(cv.auto <- cv(m.auto, seed=1234))
 #' compareFolds(cv.auto)
-#' (cv.auto.reps <- cv(m.auto, seed=1234, reps=3))
+#' plot(cv.auto)
+#' plot(cv.auto, what="coefficients")
+#' summary(cv.auto.reps <- cv(m.auto, seed=1234, reps=3))
+#' cvInfo(cv.auto.reps, what="adjusted CV criterion")
+#' plot(cv.auto.reps)
+#' plot(cv(m.auto, seed=1234, reps=10, confint=TRUE))
 #' D.auto.reps <- as.data.frame(cv.auto.reps)
 #' head(D.auto.reps)
 #' summary(D.auto.reps, mse ~ rep + fold, include="folds")
@@ -126,17 +138,30 @@
 #'         subset = fold <= 5) # first 5 folds
 #' summary(D.auto.reps, mse ~ rep, include="folds")
 #' summary(D.auto.reps, mse ~ rep, fun=sd, include="folds")
+#' })
+#' } else {
+#' cat("\n install 'ISLR2' package to run these examples\n")
+#' }
 #'
+#' if (requireNamespace("carData", quietly=TRUE)){
+#' withAutoprint({
 #' data("Mroz", package="carData")
 #' m.mroz <- glm(lfp ~ ., data=Mroz, family=binomial)
-#' cv(m.mroz, criterion=BayesRule, seed=123)
+#' summary(cv.mroz <- cv(m.mroz, criterion=BayesRule, seed=123))
+#' cvInfo(cv.mroz)
+#' cvInfo(cv.mroz, "adjusted")
+#' cvInfo(cv.mroz, "confint")
 #'
 #' data("Duncan", package="carData")
 #' m.lm <- lm(prestige ~ income + education, data=Duncan)
 #' m.rlm <- MASS::rlm(prestige ~ income + education,
 #'                    data=Duncan)
-#' cv(m.lm, k="loo", method="Woodbury")
-#' cv(m.rlm, k="loo")
+#' summary(cv(m.lm, k="loo", method="Woodbury"))
+#' summary(cv(m.rlm, k="loo"))
+#' })
+#' } else {
+#' cat("\n install 'carData' package to run these examples\n")
+#' }
 #'
 #' @export
 cv <- function(model, data, criterion, k, reps = 1L, seed, ...) {
@@ -596,54 +621,79 @@ print.cv <- function(x, digits = getOption("digits"), ...) {
     else
       signif(x, digits)
   }
-  cat(x[["k"]], "-Fold Cross Validation", sep = "")
-  if (!is.null(x[["clusters"]])) {
-    cat(" based on", x[["n clusters"]],
-        paste0("{", paste(x[["clusters"]], collapse = ", "), "}"),
+  if (!is.null(x[["criterion"]]) &&
+      x[["criterion"]] != "criterion"){
+    cat(paste0("cross-validation criterion (",
+        x[["criterion"]],
+        ") = ",
+        rnd(x[["CV crit"]])),
+        "\n")
+  } else {
+    cat("cross-validation criterion =", rnd(x[["CV crit"]]), "\n")
+  }
+  invisible(x)
+}
+
+#' @exportS3Method base::summary
+#' @describeIn cv \code{summary()} method for \code{"cv"} objects.
+#' @param x a \code{"cv"}, \code{"cvList"}, or \code{"cvDataFrame"}
+#' object to be plotted or summarized.
+summary.cv <- function(object, digits = getOption("digits"), ...) {
+  rnd <- function(object) {
+    if (round(log10(object)) >= digits)
+      round(object)
+    else
+      signif(object, digits)
+  }
+  cat(object[["k"]], "-Fold Cross Validation", sep = "")
+  if (!is.null(object[["clusters"]])) {
+    cat(" based on", object[["n clusters"]],
+        paste0("{", paste(object[["clusters"]], collapse = ", "), "}"),
         "clusters")
   }
-  if (!is.null(x[["method"]]))
-    cat("\nmethod:", x[["method"]])
-  if (!is.null(x[["criterion"]]) && x[["criterion"]] != "criterion")
-    cat("\ncriterion:", x[["criterion"]])
-  if (is.null(x[["SD CV crit"]])) {
-    cat("\ncross-validation criterion =", rnd(x[["CV crit"]]))
+  if (!is.null(object[["method"]]))
+    cat("\nmethod:", object[["method"]])
+  if (!is.null(object[["criterion"]]) && object[["criterion"]] != "criterion")
+    cat("\ncriterion:", object[["criterion"]])
+  if (is.null(object[["SD CV crit"]])) {
+    cat("\ncross-validation criterion =", rnd(object[["CV crit"]]))
   } else {
     cat("\ncross-validation criterion = ",
-        rnd(x[["CV crit"]]),
+        rnd(object[["CV crit"]]),
         " (",
-        rnd(x[["SD CV crit"]]),
+        rnd(object[["SD CV crit"]]),
         ")",
         sep = "")
   }
-  if (!is.null(x[["adj CV crit"]])) {
-    if (is.null(x[["SD adj CV crit"]])) {
-      cat("\nbias-adjusted cross-validation criterion =", rnd(x[["adj CV crit"]]))
+  if (!is.null(object[["adj CV crit"]])) {
+    if (is.null(object[["SD adj CV crit"]])) {
+      cat("\nbias-adjusted cross-validation criterion =", rnd(object[["adj CV crit"]]))
     } else {
       cat("\nbias-adjusted cross-validation criterion = ",
-          rnd(x[["adj CV crit"]]),
+          rnd(object[["adj CV crit"]]),
           " (",
-          rnd(x[["SD adj CV crit"]]),
+          rnd(object[["SD adj CV crit"]]),
           ")",
           sep = "")
     }
   }
-  if (!is.null(x$confint)) {
+  if (!is.null(object$confint)) {
     cat(
       paste0(
         "\n",
-        x$confint["level"],
+        object$confint["level"],
         "% CI for bias-adjusted CV criterion = (",
-        rnd(x$confint["lower"]),
+        rnd(object$confint["lower"]),
         ", ",
-        rnd(x$confint["upper"]),
+        rnd(object$confint["upper"]),
         ")"
       )
     )
   }
-  if (!is.null(x[["full crit"]]))
-    cat("\nfull-sample criterion =", rnd(x[["full crit"]]), "\n")
-  invisible(x)
+  if (!is.null(object[["full crit"]]))
+    cat("\nfull-sample criterion =", rnd(object[["full crit"]]))
+  cat("\n")
+  invisible(object)
 }
 
 #' @describeIn cv \code{print()} method for \code{"cvList"} objects.
@@ -655,15 +705,205 @@ print.cvList <- function(x, ...) {
   xx$Average <- xx[[1L]]
   sumry <-   summarizeReps(xx)
   xx$Average[["CV crit"]] <- sumry[["CV crit"]]
+
+  if (!is.null(xx[[1]][["criterion"]]) &&
+      xx[[1]][["criterion"]] != "criterion"){
+    cat(paste0("cross-validation criterion (",
+               x[[1]][["criterion"]],
+               ")\n"))
+  } else {
+    cat("cross-validation criterion\n")
+  }
+
+  for (rep in seq_along(xx)) {
+    cat(names(xx)[rep], ": ", sep = "")
+    cat(xx[[rep]][["CV crit"]], "\n")
+  }
+  return(invisible(x))
+}
+
+#' @describeIn cv \code{summary()} method for \code{"cvList"} objects.
+#' @exportS3Method base::summary
+summary.cvList <- function(object, ...) {
+  xx <- object
+  reps <- length(xx)
+  names(xx) <- paste("Replicate", 1L:reps)
+  xx$Average <- xx[[1L]]
+  sumry <-   summarizeReps(xx)
+  xx$Average[["CV crit"]] <- sumry[["CV crit"]]
   xx$Average[["adj CV crit"]] <- sumry[["adj CV crit"]]
   xx$Average[["SD CV crit"]] <- sumry[["SD CV crit"]]
   xx$Average[["SD adj CV crit"]] <- sumry[["SD adj CV crit"]]
   xx$Average$confint <- NULL
   for (rep in seq_along(xx)) {
     cat("\n", names(xx)[rep], ":\n", sep = "")
-    print(xx[[rep]])
+    summary(xx[[rep]])
   }
-  return(invisible(x))
+  return(invisible(object))
+}
+
+#' @param y to match the \code{\link{plot}()} generic function, ignored.
+#' @param what for \code{plot()} methods, what to plot: for the \code{"cv"} method, either \code{"CV criterion"}
+#' (the default), or \code{"coefficients"};
+#' for the \code{"cvList"} method, either \code{"adjusted CV criterion"}
+#' (the default if present in the \code{"cv"} object) or \code{"CV object"}.
+#'
+#' For \code{cvInfo()}, the information to extract from a \code{"cv"},
+#' \code{"cvModList"}, or \code{"cvList"} object,
+#' one of: \code{"CV criterion"}, \code{"adjusted CV criterion"},
+#' \code{"full CV criterion"} (the CV criterion applied to the model fit to the
+#' full data set), \code{"SE"} (the standard error of the adjusted CV criterion),
+#' \code{"confint"} (confidence interval for the adjusted CV criterion),
+#' \code{"k"}, (the number of folds), \code{"seed"} (the seed employed for
+#' R's random-number generator), \code{"method"} (the computational method
+#' employed, e.g., for a \code{"lm"} model object), or \code{"criterion name"}
+#' (the CV criterion employed); not all of these elements may be present, in
+#' which case \code{cvInfo()} would return \code{NULL}.
+#'
+#' Partial matching is supported, so, e.g., \code{cvInfo(cv-object, "adjusted")}
+#' is equivalent to \code{cvInfo(cv-object, "adjusted CV criterion")}
+#' @describeIn cv \code{plot()} method for \code{"cv"} objects.
+#' @exportS3Method base::plot
+plot.cv <- function(x, y, what=c("CV criterion", "coefficients"), ...){
+  if (is.null(x$details))
+    stop("no 'details' element in 'x', nothing to plot")
+  what <- match.arg(what)
+  if (what == "CV criterion"){
+    cv <- x[["CV crit"]]
+    cv.folds <- x$details$criterion
+    k <- x$k
+    ylim <- range(c(cv, cv.folds))
+    criterion <- x$criterion
+    if (criterion == "criterion") criterion <- NULL
+    plot(1:k, cv.folds, axes=FALSE, frame.plot=TRUE,
+         pch=16, col=3, xlab="Fold",
+         ylab=paste0("CV criterion: ", criterion),
+         ...)
+    axis(1, at = 1:k)
+    axis(2)
+    abline(h=cv, lty=2, lwd=2, col=2)
+    usr <- par("usr")
+    x <- mean(usr[1:2])
+    y <- usr[4] + 0.15*(usr[4] - usr[3])
+    graphics::legend(x, y, legend="Overall CV Criterion",
+           lwd=2, lty=2, col=2, xpd=TRUE, bty="n", xjust=0.5)
+    return(invisible(NULL))
+  } else {
+    coefs <- as.data.frame(x, columns="coefficients")
+    coefs.stacked <- utils::stack(coefs[, -1])
+    coefs.stacked <- cbind(coefs$fold, coefs.stacked)
+    names(coefs.stacked) <- c("Fold", "Coefficient", "coef.name")
+    coefs.stacked$coef.name <- sub("coef.", "", coefs.stacked$coef.name)
+    lattice::xyplot(Coefficient ~ Fold | coef.name, data=coefs.stacked,
+                    xlim=c(1, x$k),
+                    scales=list(relation= "free"),
+                    panel = function(x, y, ...){
+                      lattice::panel.points(x[x != 0], y[x != 0], ...)
+                      lattice::llines(x=range(x), y=rep(y[x == 0], 2),
+                             lty=2, lwd=2, col=palette()[2])
+                    },
+                    key=list(text=list(lab="Overall Coefficient:",
+                                       col=palette()[1]),
+                             lines=2,
+                             col=palette()[2], lty=2, lwd=2)
+    )
+  }
+}
+
+#' @describeIn cv \code{plot()} method for \code{"cvList"} objects.
+#' @exportS3Method base::plot
+plot.cvList <- function(x, y,
+                        what=c("adjusted CV criterion", "CV criterion"),
+                        confint=TRUE, ...){
+  reps <- length(x)
+  what <- match.arg(what)
+  what <- if (what == "adjusted CV criterion") "adj CV crit" else "CV crit"
+  if (is.null(x[[1]]$"adj CV crit")) what <- "CV crit"
+  cv <- sapply(x, function(x) x[[what]])
+  ci <- if (confint && !is.null(x[[1]]$confint) && what == "adj CV crit") {
+    sapply(x, function(x) x[["confint"]])
+  } else {
+    NULL
+  }
+  ylim <- if (!is.null(ci)){
+    c(min(ci["lower", ]), max(ci["upper", ]))
+  } else {
+    range(cv)
+  }
+  criterion <- x[[1]]$criterion
+  if (criterion == "criterion") criterion <- NULL
+  ylab <- paste0(if(what == "CV crit") "CV criterion: "
+                 else "Adjusted CV criterion: ", criterion)
+  plot(1:reps, cv, xlab="Replication", ylab=ylab,
+       pch=16, col=2, xlim = c(0.75, length(x) + 0.25), ylim=ylim,
+       axes=FALSE, frame.plot=TRUE, ...)
+  axis(1, at=1:reps)
+  axis(2)
+  if (!is.null(ci)){
+    for (j in 1:reps){
+      arrows(x0=j, y0=ci["lower", j], y1=ci["upper", j],
+             angle=90, code=3, lwd=2, col=3, length=1/(2*reps))
+    }
+  }
+  invisible(NULL)
+}
+
+#' @describeIn cv extract information from a \code{"cv"} object.
+#' @export
+cvInfo <- function(object, what, ...){
+  UseMethod("cvInfo")
+}
+
+#' @rdname cv
+#' @export
+cvInfo.cv <- function(object,  what=c("CV criterion",
+                                      "adjusted CV criterion",
+                                      "full CV criterion",
+                                       "confint", "SE", "k", "seed",
+                                       "method", "criterion name"),
+                         ...){
+                          what <- match.arg(what)
+                          elements <- c("CV crit", "adj CV crit", "full crit",
+                                        "confint", "SE adj CV crit", "k",
+                                        "seed", "method", "criterion")
+                          names(elements) <- c("CV criterion",
+                                               "adjusted CV criterion",
+                                               "full CV criterion",
+                                               "confint", "SE", "k", "seed",
+                                               "method", "criterion name")
+                          info <- object[[elements[[what]]]]
+                          nms <- names(info)
+                          attributes(info) <- NULL
+                          names(info) <- nms
+                          info
+                         }
+
+#' @rdname cv
+#' @export
+cvInfo.cvModList <- function(object,  what=c("CV criterion",
+                                      "adjusted CV criterion",
+                                      "full CV criterion",
+                                      "confint", "SE", "k", "seed",
+                                      "method", "criterion name"),
+                      ...){
+  sapply(object, cvInfo, what=what, ...=...)
+}
+
+#' @rdname cv
+#' @export
+cvInfo.cvList <- function(object,  what=c("CV criterion",
+                                             "adjusted CV criterion",
+                                             "full CV criterion",
+                                             "confint", "SE", "k", "seed",
+                                             "method", "criterion name"),
+                             ...){
+  result <- sapply(object, cvInfo, what=what, ...=...)
+  if (is.matrix(result)) {
+    colnames(result) <- paste0("rep.", seq_along(object))
+  } else {
+    names(result) <- paste0("rep.", seq_along(object))
+  }
+  result
 }
 
 #' @describeIn cv \code{as.data.frame()} method for \code{"cv"} objects.
@@ -735,7 +975,7 @@ as.data.frame.cv <- function(x,
       colnames(D3) <- colnames
       D2 <- cbind(D2, D3)
     }
-    D <- Merge(D, D2)
+    if (nrow(D2) > 0) D <- Merge(D, D2)
   }
   criterion <- x$criterion
   if (!is.null(criterion)) {
@@ -797,7 +1037,8 @@ print.cvDataFrame <- function(x,
 }
 
 #' @describeIn cv \code{summary()} method for \code{"cvDataFrame"} objects.
-#' @param object an object inheriting from \code{"cvDataFrame"} to summarize.
+#' @param object an object to summarize or a \code{"cv"}, \code{"cvModlist"},
+#' or \code{"cvList"} object from which to extract information via \code{cvInfo()}.
 #' @param formula of the form \code{some.criterion ~ classifying.variable(s)}
 #' (see examples).
 #' @param subset a subsetting expression; the default (\code{NULL})

@@ -8,6 +8,7 @@
 \alias{selectModelList}
 \alias{compareFolds}
 \alias{coef.cvSelect}
+\alias{cvInfo.cvSelect}
 \title{Cross-Validate a Model-Selection Procedure}
 \usage{
 \method{cv}{`function`}(
@@ -75,7 +76,7 @@ selectModelList(
   model,
   criterion = mse,
   k = 10L,
-  k.recurse = k,
+  k.meta = k,
   details = k <= 10L,
   save.model = FALSE,
   seed = FALSE,
@@ -86,6 +87,13 @@ selectModelList(
 compareFolds(object, digits = 3, ...)
 
 \method{coef}{cvSelect}(object, average, NAs = 0, ...)
+
+\method{cvInfo}{cvSelect}(
+  object,
+  what = c("CV criterion", "adjusted CV criterion", "full CV criterion", "confint", "SE",
+    "k", "seed", "method", "criterion name", "selected model"),
+  ...
+)
 }
 \arguments{
 \item{model}{a regression model object fit to data, or for the
@@ -165,7 +173,7 @@ with \code{"bcPower"} as the default.}
 \item{rounded}{if \code{TRUE} (the default) use nicely rounded versions
 of the estimated transformation parameters (see \code{\link[car]{bcPower}()}).}
 
-\item{k.recurse}{the number of folds for recursive CV; defaults
+\item{k.meta}{the number of folds for meta CV; defaults
 to the value of \code{k}; may be specified as \code{"loo"} or
 \code{"n"} as well as an integer.}
 
@@ -186,6 +194,18 @@ estimates for each fold are returned.}
 averaged estimates; the default, \code{0}, is appropriate, e.g.,
 for regression coefficients; the value \code{1} might be appropriate
 for power-transformation estimates.}
+
+\item{what}{the information to extract from a \code{"cvSelect"} object,
+one of: \code{"CV criterion"}, \code{"adjusted CV criterion"},
+\code{"full CV criterion"} (the CV criterion applied to the model fit to the
+full data set), \code{"SE"} (the standard error of the adjusted CV criterion),
+\code{"confint"} (confidence interval for the adjusted CV criterion),
+\code{"k"}, (the number of folds), \code{"seed"} (the seed employed for
+R's random-number generator), \code{"method"} (the computational method
+employed, e.g., for a \code{"lm"} model object), \code{"criterion name"}
+(the CV criterion employed), or \code{"selected model"} (the model object
+for the model that was selected); not all of these elements may be present, in
+which case \code{cvInfo()} would return \code{NULL}.}
 }
 \value{
 An object of class \code{"cvSelect"},
@@ -213,7 +233,7 @@ uses the \code{\link[car]{powerTransform}()} function in the
 \pkg{car} package; \code{selectTransAndStepAIC()} combines predictor and response
 transformations with predictor selection; and \code{selectModelList()}
 uses cross-validation to select a model from a list of models created by
-\code{\link{models}()} and employs (recursive) cross-validation to assess the predictive
+\code{\link{models}()} and employs (meta) cross-validation to assess the predictive
 accuracy of this procedure.
 }
 \details{
@@ -260,7 +280,7 @@ using \code{\link[car]{powerTransform}()} in the \pkg{car} package.
 \item \code{selectTransStepAIC()}: select transformations of the predictors and response,
 and then select predictors.
 
-\item \code{selectModelList()}: select a model using (recursive) CV.
+\item \code{selectModelList()}: select a model using (meta) CV.
 
 \item \code{compareFolds()}: print the coefficients from the selected models
 for the several folds.
@@ -270,11 +290,19 @@ for the several folds and possibly average them.
 
 }}
 \examples{
+if (requireNamespace("ISLR2", quietly=TRUE)){
+withAutoprint({
 data("Auto", package="ISLR2")
 m.auto <- lm(mpg ~ . - name - origin, data=Auto)
 cv(selectStepAIC, Auto, seed=123, working.model=m.auto)
 cv(selectStepAIC, Auto, seed=123, working.model=m.auto,
          AIC=FALSE, k=5, reps=3) # via BIC
+})
+} else {
+cat("\n install the 'ISLR2' package to run these examples\n")
+}
+if (requireNamespace("carData", quietly=TRUE)){
+withAutoprint({
 data("Prestige", package="carData")
 m.pres <- lm(prestige ~ income + education + women,
              data=Prestige)
@@ -285,6 +313,12 @@ cvt
 compareFolds(cvt)
 coef(cvt, average=median, NAs=1) # NAs not really needed here
 cv(m.pres, seed=123)
+})
+} else {
+cat("install the 'carData' package to run these examples\n")
+}
+if (requireNamespace("ISLR2", quietly=TRUE)){
+withAutoprint({
 Auto$year <- as.factor(Auto$year)
 Auto$origin <- factor(Auto$origin,
                       labels=c("America", "Europe", "Japan"))
@@ -298,12 +332,16 @@ cvs <- cv(selectTransStepAIC, data=Auto, seed=76692, working.model=m.auto,
           response="mpg", AIC=FALSE)
 cvs
 compareFolds(cvs)
+})
+}
 data("Duncan", package="carData")
 m1 <- lm(prestige ~ income + education, data=Duncan)
 m2 <- lm(prestige ~ income + education + type, data=Duncan)
 m3 <- lm(prestige ~ (income + education)*type, data=Duncan)
-cv(selectModelList, data=Duncan, seed=5963,
-   working.model=models(m1, m2, m3)) # recursive CV
+summary(cv.sel <- cv(selectModelList, data=Duncan, seed=5963,
+                     working.model=models(m1, m2, m3),
+                     save.model=TRUE)) # meta CV
+cvInfo(cv.sel, "selected model")
 
 }
 \seealso{

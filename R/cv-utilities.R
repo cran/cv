@@ -68,8 +68,6 @@
 #' the first two elements should be
 #' \code{model} and \code{newdata}; see the "Extending the cv package" vignette
 #' (\code{vignette("cv-extend", package="cv")}).
-#' @param blups a function to be used to compute BLUPs for
-#' case-based CV when \code{details = TRUE}.
 #' @param fixed.effects a function to be used to compute fixed-effect
 #' coefficients for cluster-based CV when \code{details = TRUE}.
 #' @param save.coef save the coefficients from the selected models? Deprecated
@@ -354,7 +352,6 @@ cvMixed <- function(model,
                                                    data),
                     predict.cases.args = list(object = model, newdata =
                                                 data),
-                    blups,
                     fixed.effects,
                     ...) {
   pkg.env <- getNamespace(package)
@@ -405,7 +402,7 @@ cvMixed <- function(model,
         fit.i = fit.i,
         crit.all.i = criterion(y, fit.all.i),
         indices.i = indices.i,
-        coef.i = blups(predict.cases.args$object)
+        coef.i = fixed.effects(predict.cases.args$object)
       )
     }
   y <- GetResponse(model)
@@ -482,10 +479,14 @@ cvMixed <- function(model,
     }
     stopCluster(cl)
     for (i in 1L:k) {
-      yhat[result[[i]]$indices.i] <- result[[i]]$fit.i
+      indices.i <- result[[i]]$indices.i
+      # yhat[result[[i]]$indices.i] <- result[[i]]$fit.i
+      yhat[indices.i] <- result[[i]]$fit.i
       if (details) {
-        crit.i[i] <- criterion(y[fold(folds, i)],
-                               yhat[fold(folds, i)])
+        # crit.i[i] <- criterion(y[fold(folds, i)],
+        #                        yhat[fold(folds, i)])
+        crit.i[i] <- criterion(y[indices.i],
+                               yhat[indices.i])
         coef.i[[i]] <- result[[i]]$coef.i
       }
     }
@@ -493,10 +494,14 @@ cvMixed <- function(model,
     result <- vector(k, mode = "list")
     for (i in 1L:k) {
       result[[i]] <- f(i, predict.clusters.args, predict.cases.args, ...)
-      yhat[result[[i]]$indices.i] <- result[[i]]$fit.i
+      indices.i <- result[[i]]$indices.i
+      # yhat[result[[i]]$indices.i] <- result[[i]]$fit.i
+      yhat[indices.i] <- result[[i]]$fit.i
       if (details) {
-        crit.i[i] <- criterion(y[fold(folds, i)],
-                               yhat[fold(folds, i)])
+        # crit.i[i] <- criterion(y[fold(folds, i)],
+        #                        yhat[fold(folds, i)])
+        crit.i[i] <- criterion(y[indices.i],
+                               yhat[indices.i])
         coef.i[[i]] <- result[[i]]$coef.i
       }
     }

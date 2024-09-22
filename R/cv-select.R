@@ -10,7 +10,7 @@
 #' \pkg{car} package; \code{selectTransAndStepAIC()} combines predictor and response
 #' transformations with predictor selection; and \code{selectModelList()}
 #' uses cross-validation to select a model from a list of models created by
-#' \code{\link{models}()} and employs (recursive) cross-validation to assess the predictive
+#' \code{\link{models}()} and employs (meta) cross-validation to assess the predictive
 #' accuracy of this procedure.
 #'
 #' @param data full data frame for model selection.
@@ -105,11 +105,17 @@
 #' is set accordingly (note that this is distinct from the number of
 #' folds \code{k}).
 #' @examples
+#' if (requireNamespace("ISLR2", quietly=TRUE)){
+#' withAutoprint({
 #' data("Auto", package="ISLR2")
 #' m.auto <- lm(mpg ~ . - name - origin, data=Auto)
 #' cv(selectStepAIC, Auto, seed=123, working.model=m.auto)
 #' cv(selectStepAIC, Auto, seed=123, working.model=m.auto,
 #'          AIC=FALSE, k=5, reps=3) # via BIC
+#' })
+#' } else {
+#' cat("\n install the 'ISLR2' package to run these examples\n")
+#' }
 
 #' @describeIn cv.function \code{cv()} method for applying a model
 #' model-selection (or specification) procedure.
@@ -277,6 +283,8 @@ yjPowerInverse <- function(y, lambda) {
 #' @param rounded if \code{TRUE} (the default) use nicely rounded versions
 #' of the estimated transformation parameters (see \code{\link[car]{bcPower}()}).
 #' @examples
+#' if (requireNamespace("carData", quietly=TRUE)){
+#' withAutoprint({
 #' data("Prestige", package="carData")
 #' m.pres <- lm(prestige ~ income + education + women,
 #'              data=Prestige)
@@ -287,6 +295,10 @@ yjPowerInverse <- function(y, lambda) {
 #' compareFolds(cvt)
 #' coef(cvt, average=median, NAs=1) # NAs not really needed here
 #' cv(m.pres, seed=123)
+#' })
+#' } else {
+#' cat("install the 'carData' package to run these examples\n")
+#' }
 #' @describeIn cv.function select transformations of the predictors and response
 #' using \code{\link[car]{powerTransform}()} in the \pkg{car} package.
 #' @export
@@ -422,6 +434,8 @@ selectTrans <- function(data,
 #' @describeIn cv.function select transformations of the predictors and response,
 #' and then select predictors.
 #' @examples
+#' if (requireNamespace("ISLR2", quietly=TRUE)){
+#' withAutoprint({
 #' Auto$year <- as.factor(Auto$year)
 #' Auto$origin <- factor(Auto$origin,
 #'                       labels=c("America", "Europe", "Japan"))
@@ -435,6 +449,8 @@ selectTrans <- function(data,
 #'           response="mpg", AIC=FALSE)
 #' cvs
 #' compareFolds(cvs)
+#' })
+#' }
 #' @export
 selectTransStepAIC <- function(data,
                                indices,
@@ -632,11 +648,11 @@ selectTransStepAIC <- function(data,
   )
 }
 
-#' @describeIn cv.function select a model using (recursive) CV.
+#' @describeIn cv.function select a model using (meta) CV.
 #' @param quietly if \code{TRUE} (the default), simple messages (for example about the
 #' value to which the random-number generator seed is set), but not warnings or
 #' errors, are suppressed.
-#' @param k.recurse the number of folds for recursive CV; defaults
+#' @param k.meta the number of folds for meta CV; defaults
 #' to the value of \code{k}; may be specified as \code{"loo"} or
 #' \code{"n"} as well as an integer.
 #' @export
@@ -646,7 +662,7 @@ selectModelList <-
            model,
            criterion = mse,
            k = 10L,
-           k.recurse = k,
+           k.meta = k,
            details =  k <= 10L,
            save.model = FALSE,
            seed = FALSE,
@@ -663,7 +679,7 @@ selectModelList <-
           model,
           data,
           criterion = criterion,
-          k = k.recurse,
+          k = k.meta,
           details = FALSE,
           quietly = quietly,
           seed = FALSE,
@@ -687,7 +703,7 @@ selectModelList <-
         model,
         data[-indices,],
         criterion = criterion,
-        k = k.recurse,
+        k = k.meta,
         details = details,
         quietly = quietly,
         seed = FALSE,
@@ -714,8 +730,10 @@ selectModelList <-
 #' m1 <- lm(prestige ~ income + education, data=Duncan)
 #' m2 <- lm(prestige ~ income + education + type, data=Duncan)
 #' m3 <- lm(prestige ~ (income + education)*type, data=Duncan)
-#' cv(selectModelList, data=Duncan, seed=5963,
-#'    working.model=models(m1, m2, m3)) # recursive CV
+#' summary(cv.sel <- cv(selectModelList, data=Duncan, seed=5963,
+#'                      working.model=models(m1, m2, m3),
+#'                      save.model=TRUE)) # meta CV
+#' cvInfo(cv.sel, "selected model")
 #'
 #' @describeIn cv.function print the coefficients from the selected models
 #' for the several folds.
@@ -766,3 +784,33 @@ coef.cvSelect <- function(object, average, NAs = 0, ...) {
   coef[is.na(coef)] <- NAs
   apply(coef, 2, average)
 }
+
+#' @param what the information to extract from a \code{"cvSelect"} object,
+#' one of: \code{"CV criterion"}, \code{"adjusted CV criterion"},
+#' \code{"full CV criterion"} (the CV criterion applied to the model fit to the
+#' full data set), \code{"SE"} (the standard error of the adjusted CV criterion),
+#' \code{"confint"} (confidence interval for the adjusted CV criterion),
+#' \code{"k"}, (the number of folds), \code{"seed"} (the seed employed for
+#' R's random-number generator), \code{"method"} (the computational method
+#' employed, e.g., for a \code{"lm"} model object), \code{"criterion name"}
+#' (the CV criterion employed), or \code{"selected model"} (the model object
+#' for the model that was selected); not all of these elements may be present, in
+#' which case \code{cvInfo()} would return \code{NULL}.
+#' @rdname cv.function
+#' @export
+cvInfo.cvSelect <- function(object,
+                            what=c("CV criterion",
+                                   "adjusted CV criterion",
+                                   "full CV criterion",
+                                   "confint", "SE", "k", "seed",
+                                   "method", "criterion name",
+                                   "selected model"),
+                            ...){
+  what <- match.arg(what)
+  if (what == "selected model"){
+    object$selected
+  } else {
+    NextMethod()
+  }
+}
+

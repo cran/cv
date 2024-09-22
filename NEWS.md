@@ -1,3 +1,17 @@
+# cv 2.0.3
+
+- New plot.cv() and plot.cvList() methods.
+
+- New cvInfo() accessor function with "cv", "cvList", "cvModList", and "cvSelect" methods.
+
+- Differentiate print() and summary() methods for "cv", "cvList", and "cvModlist" objects.
+
+- Fixes to computing per-fold details for mixed-models cv() methods.
+
+- Rename "recursive CV" as "meta CV" and edit functions, arguments, examples, etc., to reflect this change.
+
+- Small fixes.
+
 # cv 2.0.2
 
 - changed cache options for cv-mixed vignette

@@ -58,7 +58,18 @@ mse(D$y, fitted(m.select))
 ## ----cv-selectedModel---------------------------------------------------------
 library("cv")
 
-cv(m.select, seed = 2529)
+summary(cv(m.select, seed = 2529))
+
+## ----cvSelect-artificial-data, cache=TRUE-------------------------------------
+cv.select <- cv(
+  selectStepAIC,
+  data = D,
+  seed = 3791,
+  working.model = m.null,
+  direction = "forward",
+  scope = list(lower =  ~ 1, upper = formula(m.full))
+)
+summary(cv.select)
 
 ## ----compare-selected-models--------------------------------------------------
 compareFolds(cv.select)
@@ -127,8 +138,8 @@ legend(
   pch = 17:16
 )
 
-## ----recursive-CV-polynomials-------------------------------------------------
-recursiveCV.auto <- cv(
+## ----meta-CV-polynomials------------------------------------------------------
+metaCV.auto <- cv(
   selectModelList,
   Auto,
   working.model = models(m.1, m.2, m.3, m.4, m.5,
@@ -136,20 +147,20 @@ recursiveCV.auto <- cv(
   save.model = TRUE,
   seed = 2120
 )
-recursiveCV.auto
-recursiveCV.auto$selected.model
-cv(m.7, seed = 2120) # same seed for same folds
+summary(metaCV.auto)
+(m.sel <- cvInfo(metaCV.auto, "selected model"))
+cv(m.sel, seed = 2120) # same seed for same folds
 
-## ----recursive-cv-alt---------------------------------------------------------
-recursiveCV.auto.alt <- cv(
+## ----meta-cv-alt--------------------------------------------------------------
+metaCV.auto.alt <- cv(
   models(m.1, m.2, m.3, m.4, m.5,
          m.6, m.7, m.8, m.9, m.10),
   data = Auto,
   seed = 2120,
-  recursive = TRUE,
+  meta = TRUE,
   save.model = TRUE
 )
-all.equal(recursiveCV.auto, recursiveCV.auto.alt)
+all.equal(metaCV.auto, metaCV.auto.alt)
 
 ## ----recall-Mroz-regression---------------------------------------------------
 data("Mroz", package = "carData")
@@ -164,7 +175,7 @@ BayesRule(Mroz$lfp == "yes",
           predict(m.mroz.sel, type = "response"))
 
 ## ----cv-mroz-regression-------------------------------------------------------
-cv(m.mroz.sel, criterion = BayesRule, seed = 345266)
+summary(cv(m.mroz.sel, criterion = BayesRule, seed = 345266))
 
 ## ----cv-mroz-selection--------------------------------------------------------
 m.mroz.sel.cv <- cv(
@@ -175,7 +186,7 @@ m.mroz.sel.cv <- cv(
   working.model = m.mroz,
   AIC = FALSE
 )
-m.mroz.sel.cv
+summary(m.mroz.sel.cv)
 
 ## ----compare-selected-models-mroz---------------------------------------------
 compareFolds(m.mroz.sel.cv)
@@ -248,7 +259,7 @@ cvs <- cv(
   response = "prestige",
   family = "yjPower"
 )
-cvs
+summary(cvs)
 
 cv(m.pres, seed = 1463) # untransformed model with same folds
 
@@ -346,7 +357,7 @@ cvs <- cv(
   AIC = FALSE,
   criterion = medAbsErr
 )
-cvs
+summary(cvs)
 
 compareFolds(cvs)
 

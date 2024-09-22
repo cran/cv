@@ -8,7 +8,7 @@
 #' \code{\link[glmmTMB]{glmmTMB}()} function in the \pkg{glmmTMB} package.
 #'
 #' @param model a mixed-effects model object for which a \code{cv()} method is available.
-#' @param data data frame to which the model was fit (not usually necessary)
+#' @param data data frame to which the model was fit (not usually necessary).
 #' @param criterion cross-validation ("cost" or lack-of-fit) criterion function of form \code{f(y, yhat)}
 #'        where \code{y} is the observed values of the response and
 #'        \code{yhat} the predicted values; the default is \code{\link{mse}}
@@ -22,21 +22,17 @@
 #' criterion, if the criterion is the average of casewise components.
 #' @param seed for R's random number generator; optional, if not
 #' supplied a random seed will be selected and saved; not needed
-#' for n-fold cross-validation
+#' for n-fold cross-validation.
 #' @param details if \code{TRUE} (the default if the number of
 #' folds \code{k <= 10}), save detailed information about the value of the
 #' CV criterion for the cases in each fold and the regression coefficients
 #' with that fold deleted.
 #' @param ncores number of cores to use for parallel computations
-#'        (default is \code{1}, i.e., computations aren't done in parallel)
+#'        (default is \code{1}, i.e., computations aren't done in parallel).
 #' @param clusterVariables a character vector of names of the variables
 #' defining clusters for a mixed model with nested or crossed random effects;
 #' if missing, cross-validation is performed for individual cases rather than
-#' for clusters
-#' @param blups a function to be used to compute BLUPs for
-#' case-based CV when \code{details = TRUE}.
-#' @param fixed.effects a function to be used to compute fixed-effect
-#' coefficients for cluster-based CV when \code{details = TRUE}.
+#' for clusters.
 #' @param ... for \code{cv()} methods, to match generic,
 #' and for \code{cvMixed()}, arguments to be passed to \code{update()}.
 #'
@@ -52,25 +48,27 @@
 #' library("lme4")
 #' # from ?lmer:
 #' (fm1 <- lmer(Reaction ~ Days + (Days | Subject), sleepstudy))
-#' cv(fm1, clusterVariables="Subject") # LOO CV of clusters
-#' cv(fm1, seed=447) # 10-fold CV of cases
-#' cv(fm1, clusterVariables="Subject", k=5,
-#'    seed=834, reps=3) # 5-fold CV of clusters, repeated 3 times
+#' summary(cv(fm1, clusterVariables="Subject")) # LOO CV of clusters
+#' summary(cv(fm1, seed=447)) # 10-fold CV of cases
+#' summary(cv(fm1, clusterVariables="Subject", k=5,
+#'    seed=834, reps=3)) # 5-fold CV of clusters, repeated 3 times
 #'
 #' library("nlme")
 #' # from ?lme
 #' (fm2 <- lme(distance ~ age + Sex, data = Orthodont,
 #'             random = ~ 1))
-#' cv(fm2) # LOO CV of cases
-#' cv(fm2, clusterVariables="Subject", k=5, seed=321) # 5-fold CV of clusters
+#' summary(cv(fm2)) # LOO CV of cases
+#' summary(cv(fm2, clusterVariables="Subject",
+#'         k=5, seed=321)) # 5-fold CV of clusters
 #'
 #' library("glmmTMB")
 #' # from ?glmmTMB
 #' (m1 <- glmmTMB(count ~ mined + (1|site),
 #'                zi=~mined,
 #'                family=poisson, data=Salamanders))
-#' cv(m1, seed=97816, k=5, clusterVariables="site") # 5-fold CV of clusters
-#' cv(m1, seed=34506, k=5) # 5-fold CV of cases
+#' summary(cv(m1, seed=97816, k=5,
+#'           clusterVariables="site")) # 5-fold CV of clusters
+#' summary(cv(m1, seed=34506, k=5)) # 5-fold CV of cases
 
 #' @returns
 #' The methods \code{cv.merMod()}, \code{cv.lme()}, and \code{cv.glmmTMB()},
@@ -90,8 +88,6 @@ cv.merMod <-
            details = NULL,
            ncores = 1L,
            clusterVariables,
-           blups = coef,
-           fixed.effects = lme4::fixef,
            ...) {
     cvMixed(
       model,
@@ -118,8 +114,7 @@ cv.merMod <-
         re.form = NA,
         allow.new.levels = TRUE
       ),
-      blups = blups,
-      fixed.effects = fixed.effects,
+      fixed.effects = lme4::fixef,
       ...
     )
   }
@@ -137,8 +132,6 @@ cv.lme <-
            details = NULL,
            ncores = 1L,
            clusterVariables,
-           blups = coef,
-           fixed.effects = nlme::fixef,
            ...) {
     cvMixed(
       model,
@@ -162,8 +155,7 @@ cv.lme <-
         newdata = data,
         level = 1
       ),
-      blups = blups,
-      fixed.effects = fixed.effects,
+      fixed.effects = nlme::fixef,
       ...
     )
   }
@@ -181,8 +173,6 @@ cv.glmmTMB <-
            details = NULL,
            ncores = 1L,
            clusterVariables,
-           blups = coef,
-           fixed.effects = glmmTMB::fixef,
            ...) {
     if(isFALSE(model$call$doFit)) model <- update(model, doFit = TRUE)
     cvMixed(
@@ -210,11 +200,50 @@ cv.glmmTMB <-
         re.form = NA,
         allow.new.levels = TRUE
       ),
-      blups = blups,
-      fixed.effects = fixed.effects,
+      fixed.effects = flattenFixefGlmmTMB,
       ...
     )
   }
+
+flattenFixefGlmmTMB <- function(model, ...){
+
+  coefs <- glmmTMB::fixef(model)
+
+  cond <- if (length(coefs$cond) > 0){
+    cond.coefs <- coefs$cond
+    coef.names <- names(cond.coefs)
+    coef.names[coef.names == "(Intercept)"] <- "Intercept"
+    coef.names <- paste0("cond.", coef.names)
+    names(cond.coefs) <- coef.names
+    cond.coefs
+  } else {
+    numeric(0)
+  }
+
+  zi <- if (length(coefs$zi) > 0){
+    zi.coefs <- coefs$zi
+    coef.names <- names(zi.coefs)
+    coef.names[coef.names == "(Intercept)"] <- "Intercept"
+    coef.names <- paste0("zi.", coef.names)
+    names(zi.coefs) <- coef.names
+    zi.coefs
+  } else {
+    numeric(0)
+  }
+
+  disp <- if (length(coefs$disp) > 0){
+    disp.coefs <- coefs$disp
+    coef.names <- names(disp.coefs)
+    coef.names[coef.names == "(Intercept)"] <- "Intercept"
+    coef.names <- paste0("disp.", coef.names)
+    names(disp.coefs) <- coef.names
+    disp.coefs
+  } else {
+    numeric(0)
+  }
+
+  c(cond, zi, disp)
+}
 
 
 defineClusters <- function(variables, data) {

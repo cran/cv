@@ -12,7 +12,7 @@
 
 <meta name="author" content="John Fox and Georges Monette" />
 
-<meta name="date" content="2024-08-04" />
+<meta name="date" content="2024-09-22" />
 
 <title>Computational and technical notes on cross-validating regression models</title>
 
@@ -51,7 +51,7 @@ overflow: visible;
 </style>
 <style type="text/css" data-origin="pandoc">
 pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
 .sourceCode { overflow: visible; }
 code.sourceCode > span { color: inherit; text-decoration: inherit; }
@@ -150,7 +150,6 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; }
 div.csl-bib-body { }
 div.csl-entry {
 clear: both;
-margin-bottom: 0em;
 }
 .hanging div.csl-entry {
 margin-left:2em;
@@ -364,7 +363,7 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 <h1 class="title toc-ignore">Computational and technical notes on
 cross-validating regression models</h1>
 <h4 class="author">John Fox and Georges Monette</h4>
-<h4 class="date">2024-08-04</h4>
+<h4 class="date">2024-09-22</h4>
 
 
 
@@ -493,19 +492,19 @@ vignette, repeated here:</p>
 <span id="cb1-22"><a href="#cb1-22" tabindex="-1"></a><span class="co">#&gt; F-statistic:  428 on 2 and 389 DF,  p-value: &lt;2e-16</span></span>
 <span id="cb1-23"><a href="#cb1-23" tabindex="-1"></a></span>
 <span id="cb1-24"><a href="#cb1-24" tabindex="-1"></a><span class="fu">library</span>(<span class="st">&quot;cv&quot;</span>)</span>
-<span id="cb1-25"><a href="#cb1-25" tabindex="-1"></a><span class="fu">cv</span>(m.auto, <span class="at">k =</span> <span class="st">&quot;loo&quot;</span>)  <span class="co"># default method = &quot;hatvalues&quot;</span></span>
+<span id="cb1-25"><a href="#cb1-25" tabindex="-1"></a><span class="fu">summary</span>(<span class="fu">cv</span>(m.auto, <span class="at">k =</span> <span class="st">&quot;loo&quot;</span>) ) <span class="co"># default method = &quot;hatvalues&quot;</span></span>
 <span id="cb1-26"><a href="#cb1-26" tabindex="-1"></a><span class="co">#&gt; n-Fold Cross Validation</span></span>
 <span id="cb1-27"><a href="#cb1-27" tabindex="-1"></a><span class="co">#&gt; method: hatvalues</span></span>
 <span id="cb1-28"><a href="#cb1-28" tabindex="-1"></a><span class="co">#&gt; criterion: mse</span></span>
 <span id="cb1-29"><a href="#cb1-29" tabindex="-1"></a><span class="co">#&gt; cross-validation criterion = 19.248</span></span>
-<span id="cb1-30"><a href="#cb1-30" tabindex="-1"></a><span class="fu">cv</span>(m.auto, <span class="at">k =</span> <span class="st">&quot;loo&quot;</span>, <span class="at">method =</span> <span class="st">&quot;naive&quot;</span>)</span>
+<span id="cb1-30"><a href="#cb1-30" tabindex="-1"></a><span class="fu">summary</span>(<span class="fu">cv</span>(m.auto, <span class="at">k =</span> <span class="st">&quot;loo&quot;</span>, <span class="at">method =</span> <span class="st">&quot;naive&quot;</span>))</span>
 <span id="cb1-31"><a href="#cb1-31" tabindex="-1"></a><span class="co">#&gt; n-Fold Cross Validation</span></span>
 <span id="cb1-32"><a href="#cb1-32" tabindex="-1"></a><span class="co">#&gt; method: naive</span></span>
 <span id="cb1-33"><a href="#cb1-33" tabindex="-1"></a><span class="co">#&gt; criterion: mse</span></span>
 <span id="cb1-34"><a href="#cb1-34" tabindex="-1"></a><span class="co">#&gt; cross-validation criterion = 19.248</span></span>
 <span id="cb1-35"><a href="#cb1-35" tabindex="-1"></a><span class="co">#&gt; bias-adjusted cross-validation criterion = 19.248</span></span>
 <span id="cb1-36"><a href="#cb1-36" tabindex="-1"></a><span class="co">#&gt; full-sample criterion = 18.985</span></span>
-<span id="cb1-37"><a href="#cb1-37" tabindex="-1"></a><span class="fu">cv</span>(m.auto, <span class="at">k =</span> <span class="st">&quot;loo&quot;</span>, <span class="at">method =</span> <span class="st">&quot;Woodbury&quot;</span>)</span>
+<span id="cb1-37"><a href="#cb1-37" tabindex="-1"></a><span class="fu">summary</span>(<span class="fu">cv</span>(m.auto, <span class="at">k =</span> <span class="st">&quot;loo&quot;</span>, <span class="at">method =</span> <span class="st">&quot;Woodbury&quot;</span>))</span>
 <span id="cb1-38"><a href="#cb1-38" tabindex="-1"></a><span class="co">#&gt; n-Fold Cross Validation</span></span>
 <span id="cb1-39"><a href="#cb1-39" tabindex="-1"></a><span class="co">#&gt; method: Woodbury</span></span>
 <span id="cb1-40"><a href="#cb1-40" tabindex="-1"></a><span class="co">#&gt; criterion: mse</span></span>
@@ -572,9 +571,9 @@ example in the introductory vignette:</p>
 <span id="cb3-26"><a href="#cb3-26" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-27"><a href="#cb3-27" tabindex="-1"></a><span class="co">#&gt; Number of Fisher Scoring iterations: 4</span></span>
 <span id="cb3-28"><a href="#cb3-28" tabindex="-1"></a></span>
-<span id="cb3-29"><a href="#cb3-29" tabindex="-1"></a><span class="fu">cv</span>(m.mroz, <span class="co"># default method = &quot;exact&quot;</span></span>
+<span id="cb3-29"><a href="#cb3-29" tabindex="-1"></a><span class="fu">summary</span>(<span class="fu">cv</span>(m.mroz, <span class="co"># default method = &quot;exact&quot;</span></span>
 <span id="cb3-30"><a href="#cb3-30" tabindex="-1"></a>   <span class="at">k =</span> <span class="st">&quot;loo&quot;</span>, </span>
-<span id="cb3-31"><a href="#cb3-31" tabindex="-1"></a>   <span class="at">criterion =</span> BayesRule)</span>
+<span id="cb3-31"><a href="#cb3-31" tabindex="-1"></a>   <span class="at">criterion =</span> BayesRule))</span>
 <span id="cb3-32"><a href="#cb3-32" tabindex="-1"></a><span class="co">#&gt; n-Fold Cross Validation</span></span>
 <span id="cb3-33"><a href="#cb3-33" tabindex="-1"></a><span class="co">#&gt; method: exact</span></span>
 <span id="cb3-34"><a href="#cb3-34" tabindex="-1"></a><span class="co">#&gt; criterion: BayesRule</span></span>
@@ -582,10 +581,10 @@ example in the introductory vignette:</p>
 <span id="cb3-36"><a href="#cb3-36" tabindex="-1"></a><span class="co">#&gt; bias-adjusted cross-validation criterion = 0.3183</span></span>
 <span id="cb3-37"><a href="#cb3-37" tabindex="-1"></a><span class="co">#&gt; 95% CI for bias-adjusted CV criterion = (0.28496, 0.35164)</span></span>
 <span id="cb3-38"><a href="#cb3-38" tabindex="-1"></a><span class="co">#&gt; full-sample criterion = 0.30677</span></span>
-<span id="cb3-39"><a href="#cb3-39" tabindex="-1"></a><span class="fu">cv</span>(m.mroz,</span>
+<span id="cb3-39"><a href="#cb3-39" tabindex="-1"></a><span class="fu">summary</span>(<span class="fu">cv</span>(m.mroz,</span>
 <span id="cb3-40"><a href="#cb3-40" tabindex="-1"></a>   <span class="at">k =</span> <span class="st">&quot;loo&quot;</span>,</span>
 <span id="cb3-41"><a href="#cb3-41" tabindex="-1"></a>   <span class="at">criterion =</span> BayesRule,</span>
-<span id="cb3-42"><a href="#cb3-42" tabindex="-1"></a>   <span class="at">method =</span> <span class="st">&quot;Woodbury&quot;</span>)</span>
+<span id="cb3-42"><a href="#cb3-42" tabindex="-1"></a>   <span class="at">method =</span> <span class="st">&quot;Woodbury&quot;</span>))</span>
 <span id="cb3-43"><a href="#cb3-43" tabindex="-1"></a><span class="co">#&gt; n-Fold Cross Validation</span></span>
 <span id="cb3-44"><a href="#cb3-44" tabindex="-1"></a><span class="co">#&gt; method: Woodbury</span></span>
 <span id="cb3-45"><a href="#cb3-45" tabindex="-1"></a><span class="co">#&gt; criterion: BayesRule</span></span>
@@ -593,10 +592,10 @@ example in the introductory vignette:</p>
 <span id="cb3-47"><a href="#cb3-47" tabindex="-1"></a><span class="co">#&gt; bias-adjusted cross-validation criterion = 0.3183</span></span>
 <span id="cb3-48"><a href="#cb3-48" tabindex="-1"></a><span class="co">#&gt; 95% CI for bias-adjusted CV criterion = (0.28496, 0.35164)</span></span>
 <span id="cb3-49"><a href="#cb3-49" tabindex="-1"></a><span class="co">#&gt; full-sample criterion = 0.30677</span></span>
-<span id="cb3-50"><a href="#cb3-50" tabindex="-1"></a><span class="fu">cv</span>(m.mroz,</span>
+<span id="cb3-50"><a href="#cb3-50" tabindex="-1"></a><span class="fu">summary</span>(<span class="fu">cv</span>(m.mroz,</span>
 <span id="cb3-51"><a href="#cb3-51" tabindex="-1"></a>   <span class="at">k =</span> <span class="st">&quot;loo&quot;</span>,</span>
 <span id="cb3-52"><a href="#cb3-52" tabindex="-1"></a>   <span class="at">criterion =</span> BayesRule,</span>
-<span id="cb3-53"><a href="#cb3-53" tabindex="-1"></a>   <span class="at">method =</span> <span class="st">&quot;hatvalues&quot;</span>)</span>
+<span id="cb3-53"><a href="#cb3-53" tabindex="-1"></a>   <span class="at">method =</span> <span class="st">&quot;hatvalues&quot;</span>))</span>
 <span id="cb3-54"><a href="#cb3-54" tabindex="-1"></a><span class="co">#&gt; n-Fold Cross Validation</span></span>
 <span id="cb3-55"><a href="#cb3-55" tabindex="-1"></a><span class="co">#&gt; method: hatvalues</span></span>
 <span id="cb3-56"><a href="#cb3-56" tabindex="-1"></a><span class="co">#&gt; criterion: BayesRule</span></span>
@@ -813,11 +812,9 @@ can be written as solutions of the following system of <span class="math inline"
 matrix of 1s conformable with <span class="math inline">\(\mathbf{Y}\)</span>; <span class="math inline">\(\mathbf{c}_0 = [\mathrm{cv}(1,0), c(2,0), ...,
 \mathrm{cv}(n_v,0)]^T\)</span>; <span class="math inline">\(\mathbf{c}_1
 = [\mathrm{cv}(1,1), c(2,1), ..., \mathrm{cv}(n_v,1)]^T\)</span>; <span class="math inline">\([\mathbf{U} -\mathbf{Y}, \mathbf{Y}]_{(2^{n_v}
-\times 2n_v)}\)</span> and <span class="math inline">\(\begin{bmatrix}\begin{aligned}
-\mathbf{c}_0 \\ \mathbf{c}_1
-\end{aligned}
-\end{bmatrix}_{(2n_v \times 1)}\)</span> are partitioned matrices; and
-<span class="math inline">\(\mathbf{\widehat{Y}}_{(2^{n_v} \times
+\times 2n_v)}\)</span> and <span class="math inline">\(\begin{bmatrix}\begin{aligned} \mathbf{c}_0 \\
+\mathbf{c}_1 \end{aligned} \end{bmatrix}_{(2n_v \times 1)}\)</span> are
+partitioned matrices; and <span class="math inline">\(\mathbf{\widehat{Y}}_{(2^{n_v} \times
 n_v)}\)</span> is a matrix each of whose rows consists of the integers 1
 to <span class="math inline">\(n_v\)</span>.</p>
 <p>We can test whether equation (<span class="math inline">\(\ref{eq:lin}\)</span>) has a solution for any
@@ -868,7 +865,7 @@ criterion.</p>
 </div>
 <div id="references" class="section level2 unnumbered">
 <h2 class="unnumbered">References</h2>
-<div id="refs" class="references csl-bib-body hanging-indent" entry-spacing="0" line-spacing="2">
+<div id="refs" class="references csl-bib-body hanging-indent" line-spacing="2">
 <div id="ref-ArlotCelisse:2010" class="csl-entry">
 Arlot, S., &amp; Celisse, A. (2010). <span class="nocase">A survey of
 cross-validation procedures for model selection</span>. <em>Statistics
