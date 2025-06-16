@@ -2,3 +2,13 @@ foreach
 iterators
 doParallel
 cv
+nnet
+MASS
+Matrix
+lme4
+leaps
+dplyr
+nlme
+glmmTMB
+lattice
+latticeExtra
